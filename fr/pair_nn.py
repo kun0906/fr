@@ -2,14 +2,15 @@
 
     https://pytorch.org/tutorials/beginner/blitz/neural_networks_tutorial.html
 """
-import scipy
+import collections
+
 import sklearn.metrics
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
-import gen_data
+from datasets import gen_data
 import random
 torch.manual_seed(0)
 random.seed(0)
@@ -67,7 +68,7 @@ def compute_Xy2(X):
 
 def main():
 	X, y = gen_data.gen_data(n=5000, is_show=True, random_state=42)
-
+	print(X.shape, collections.Counter(y))
 	n, d = X.shape
 	out_dim = d
 	net = Net(in_dim=2 * d, out_dim=out_dim)
