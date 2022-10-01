@@ -25,6 +25,8 @@ def gen_data(n=1000, is_show = False, data_type ='s-curve1',  random_state=42):
 		S_points, S_color = datasets.make_s_curve(n_samples, random_state=random_state)
 		X, y= S_points, S_color
 		plot_3d(S_points, S_color, title='manifold 3d')
+	elif data_type == 'moon':
+		X, y = datasets.make_moons(n_samples=n_samples, noise=0.05)
 	elif data_type == 'mnist':
 		in_dir = 'datasets/MNIST/mnist'
 		file = os.path.join(in_dir, 'mnist_train.csv')
@@ -40,7 +42,11 @@ def gen_data(n=1000, is_show = False, data_type ='s-curve1',  random_state=42):
 		                                                    train_size=n_samples * 10, shuffle=True,
 		                                                    stratify = y_train,
 			                                            random_state=random_state)  # train set = 1-ratio
-		X, y = X_train_, y_train_
+		X, y = X_train_/255, y_train_
+	elif data_type == 'one_gaussian':
+		r = np.random.RandomState(seed=random_state)
+		X = r.multivariate_normal([0,0], [[0.1, 0], [0, 0.1]], size=(n_samples, 2))
+		y = np.zeros((X.shape[0], ))
 	else:
 		X, y = datasets.make_circles(n_samples=n_samples, factor=0.5, noise=0.05, random_state=random_state)
 		# noisy_moons = datasets.make_moons(n_samples=n_samples, noise=0.05)
