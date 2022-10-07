@@ -1,3 +1,7 @@
 ./sysconfig.txt
 .idea
 /fr/datasets/MNIST/mnist/
+
+**/*.pyc
+.DS_Store
+/**/.DS_Store

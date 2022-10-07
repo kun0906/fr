@@ -17,7 +17,7 @@ dev-version
 > pip install -r requirement.txt
 
 # Usage 
-> python3 ../main.py 
+> python3 xxx.py 
 
 
 # Examples

@@ -1,0 +1,24 @@
+V0.0.3-4: Add perplexity for KL
+
+1. Implement perplexity to compute sigma for KL
+2. Add 5 and 10 clusters with random centroids in 5 dimensions
+
+
+V0.0.3-3: Add fr.sh
+
+1. Add fr.sh for hpc
+2. Add plt.savefig() for single_nn.py and single_nn2.py
+
+
+V0.0.3-2: Add 5 Gaussians with 5 dimensions
+
+1. Update loss function for overflowing
+    torch.clamp((p_ij * torch.log(p_ij / q_ij + 1e-10).abs()), min=-1e-20, max=1e+20)
+2. Add 5 Gaussians with 5 dimensions
+
+
+V0.0.3: Using a single point as the input for Neural network
+
+1. Add tsne_noise.py
+2. Try different pair_nn.
+3. Add single_nn.py with KL divergence + Euclidean distance + Cosine similarity.
