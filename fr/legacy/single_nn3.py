@@ -207,7 +207,7 @@ def plot_xy(X, y, net, epoch):
 
 
 def main():
-	out_dir = 'out'
+	out_dir = '../out'
 	X_raw, y_raw = gen_data.gen_data(n=20, data_type='2gaussians1', is_show=False, random_state=42)
 	# X_raw = np.asarray([[0,0], [1, 3], [2, 0], [-3, 3]])
 	# y_raw = np.asarray([0, 0, 1, 1])

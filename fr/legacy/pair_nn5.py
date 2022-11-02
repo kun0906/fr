@@ -144,7 +144,7 @@ def cos_sim_torch(x1, x2):
 
 
 def main():
-	out_dir = 'out'
+	out_dir = '../out'
 	data_name = '2gaussians'
 	data_name = '2circles'
 	# data_name = 's-curve'
@@ -388,7 +388,7 @@ def main():
 	nrows, ncols = 6, 7
 	fig, ax = plt.subplots(nrows, ncols, figsize=(25, 20))  # width, height
 	# fig = plt.figure(figsize=(15, 15))  # width, height
-	f = os.path.join('out', f'projection.png')
+	f = os.path.join('../out', f'projection.png')
 	check_path(os.path.dirname(f))
 	r = 0
 	X_res = []

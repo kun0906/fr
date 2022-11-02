@@ -175,7 +175,7 @@ def plot_hist(ds, epoch):
 
 
 def main():
-	out_dir = 'out'
+	out_dir = '../out'
 	data_name = '2gaussians'
 	data_name = 'mnist'
 	# data_name = '5gaussians-5dims'

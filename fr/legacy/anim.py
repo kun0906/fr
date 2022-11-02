@@ -4,6 +4,17 @@ import moviepy.editor as mpy
 import numpy as np
 from moviepy.video.io.bindings import mplfig_to_npimage
 
+# from moviepy.editor import concatenate_videoclips
+	# from moviepy.video.VideoClip import ImageClip,VideoClip
+	#
+	# # frames = [f for f in figs]   # set each image 2 seconds
+	# # concat_clip = concatenate_videoclips(frames, method="compose")
+	# out_file = os.path.join(out_dir, 'batches.mp4')
+	# # # concat_clip.write_videofile(out_file, fps=24, threads=8)
+	# concat_clip = ImageSequenceClip(sequence=figs, fps=24)
+	# concat_clip.write_gif("tmp.gif", fps=1)
+
+
 X = []
 y = []
 for t in range(10):

@@ -131,7 +131,7 @@ def plot_xy(X, y, net, epoch):
 
 
 def main():
-	out_dir = 'out'
+	out_dir = '../out'
 	# data_name = '2gaussians'
 	data_name = '5gaussians-5dims'
 	X_raw, y_raw = gen_data.gen_data(n=10, data_type=data_name, is_show=False, random_state=42)

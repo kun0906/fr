@@ -9,13 +9,18 @@ import random
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy
 import sklearn.metrics
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from scipy.spatial.distance import pdist, cdist
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.neighbors import NearestNeighbors
 from torch.optim.lr_scheduler import ExponentialLR
+from umap import UMAP
 
 from datasets import gen_data
 from utils.common import check_path
@@ -32,7 +37,7 @@ class Net(nn.Module):
 	def __init__(self, in_dim, out_dim=2):
 		super(Net, self).__init__()
 		# an affine operation: y = Wx + b
-		dim = max(in_dim//8, out_dim * 8*2)
+		dim = max(in_dim, out_dim * 8*2)
 		self.fc1 = nn.Linear(in_dim, dim//4)
 		self.fc2 = nn.Linear(dim//4,dim//8)
 		self.fc20 = nn.Linear(dim//8, dim//8)
@@ -44,8 +49,9 @@ class Net(nn.Module):
 		# x = F.leaky_relu(self.fc20(x))
 		# x = F.leaky_relu(self.fc20(x))
 		# x = F.leaky_relu(self.fc20(x))
-		# x = F.leaky_relu(self.fc20(x))
+		x = F.leaky_relu(self.fc20(x))
 		# x = F.sigmoid(self.fc3(x))
+		# x = F.softmax(self.fc3(x))
 		x = self.fc3(x)
 		return x
 
@@ -103,7 +109,7 @@ def compute_Xy2(X1, X):
 
 
 def dist2_tensor(X1, X2):
-	return (X1 - X2).pow(2).sum(axis=1)
+	return (X1 - X2).pow(2).sum()
 
 
 # return (X1 - X2).abs().sum(axis=1)
@@ -138,9 +144,107 @@ def cos_sim_torch(x1, x2):
 	return torch.dot(x1, x2) / (torch.norm(x1) * torch.norm(x2))
 
 
+def t_distribution_torch(x1, x2):
+	return 1 / (1 + (x1 - x2).pow(2).sum())
+
+
+def gaussian_torch(x1, x2, sigma=1):
+	return torch.exp(-(x1 - x2).pow(2).sum() / (2 * sigma ** 2))
+
+
+def compute_y_kl(X, net):
+	N, d = X.shape
+	sum_y_kl = 0
+	for k in range(N):
+		for l in range(N):
+			if l == k: continue
+			pair = np.concatenate([X[k], X[l]], axis=0)
+			y_ = net(torch.from_numpy(pair))
+			sum_y_kl += t_distribution_torch(y_[:2], y_[2:]).detach().numpy().item()
+	return sum_y_kl
+
+
+def compute_x_kl(X, sigma=1):
+	N, d = X.shape
+	sum_x_kl = 0
+	for k in range(N):
+		X_k = X[k]
+		for l in range(N):
+			if l == k: continue
+			X_l = X[l]
+			sum_x_kl += gaussian_torch(X_k, X_l, sigma).detach().numpy().item()
+	return sum_x_kl
+
+
+def compute_ds(X):
+	N, d = X.shape
+	ds = []
+	for k in range(N):
+		X_k = X[k]
+		for l in range(N):
+			if l == k: continue
+			X_l = X[l]
+			ds.append(np.sqrt(np.sum(np.square(X_k-X_l))))
+	return ds
+
+
+
+
+
+
 def main():
-	X_raw, y_raw = gen_data.gen_data(n=100, data_type='moon1', is_show=False, random_state=42)
+	out_dir = '../out'
+	data_name = '2gaussians'
+	data_name = '2circles'
+	# data_name = 's-curve'
+	# data_name = 'mnist'
+	# data_name = '5gaussians-5dims'
+	X_raw, y_raw = gen_data.gen_data(n=15, data_type=data_name, is_show=False, random_state=42)
+	# X_raw = np.asarray([[0,0], [1, 3], [2, 0], [-3, 3]])
+	# y_raw = np.asarray([0, 0, 1, 1])
 	print(X_raw.shape, collections.Counter(y_raw))
+
+	# # first reduce the original data to lower space to fast the latter process.
+	# std = sklearn.preprocessing.StandardScaler()
+	# std.fit(X_raw)
+	# X_raw = std.transform(X_raw)
+	#
+	# pca = PCA(n_components=0.99, random_state=42)
+	# pca.fit(X_raw)
+	# print(pca.explained_variance_, pca.explained_variance_ratio_)
+	# X_raw = pca.transform(X_raw)
+	# print(X_raw.shape)
+	# #
+	# std = sklearn.preprocessing.StandardScaler()
+	# std.fit(X_raw)
+	# X_raw = std.transform(X_raw)
+
+	# X, y = X_raw, y_raw
+	# tsne = TSNE(perplexity=29, random_state=42)
+	# X_ = tsne.fit_transform(X)
+	#
+	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
+	# plt.title('TSNE X')
+	# plt.show()
+	#
+	# umap = UMAP(random_state=42)
+	# X_ = umap.fit_transform(X)
+	#
+	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
+	# plt.title('UMAP X')
+	# plt.show()
+	#
+	# pca = PCA(n_components=0.99, random_state=42)
+	# pca.fit(X)
+	# print(pca.explained_variance_, pca.explained_variance_ratio_)
+	#
+	# pca = PCA(n_components=2, random_state=42)
+	# X_ = pca.fit_transform(X)
+	#
+	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
+	# plt.title('PCA X')
+	# plt.show()
+	#
 
 	# for r in range(10):
 	# 	indices = (y_raw == r)
@@ -155,13 +259,17 @@ def main():
 
 	n, d = X_raw.shape
 	out_dim = 2
-	n_epochs = 200
-	model_file = f'net_ep_{n_epochs}-n4.pt'
+	in_dim = d
+	n_epochs = 50
+	model_file = f'out/net_ep_{n_epochs}-n5.pt'
 	if os.path.exists(model_file):
 		os.remove(model_file)
 
+	ds = pdist(X_raw)
+	d_u = np.max(ds)
+	print(f'd_u: {d_u}')
 	if not os.path.exists(model_file):
-		net = Net(in_dim=2 * d, out_dim=2 * out_dim)
+		net = Net(in_dim=2 * in_dim, out_dim=2 * out_dim)
 		print(net)
 		params = list(net.parameters())
 		print(len(params))
@@ -172,90 +280,112 @@ def main():
 		criterion = nn.MSELoss(reduction='sum')
 		# criterion = nn.CrossEntropyLoss()
 		scheduler = ExponentialLR(optimizer, gamma=0.9)
-		batch_size = 100
+		n_neighbors = 3
+		# Find the nearest neighbors for every point
+		knn = NearestNeighbors(
+			algorithm="auto",
+			n_neighbors=n_neighbors,
+		)
+		knn.fit(X_raw)
+		# distances_nn = knn.kneighbors_graph(mode="distance")
+		# sigmas = {}
+		# sum_x = {}
+
 		history = {'loss': []}
 		for epoch in range(n_epochs):
 			# shuffle X, y
 			X, y = copy.deepcopy(X_raw), copy.deepcopy(y_raw)
-			n, d = X.shape
+			N, d = X.shape
 			X, y = sklearn.utils.shuffle(X, y, random_state=epoch)
 			losses = []
 			L = 0
+			seen_cos = {}
+			batch_size = n
 			seen = {}
-			for i in range(0, n, batch_size):
-				X2 = X[i:i + batch_size, :]
+			X1 = X
+			# optimizer.zero_grad()  # zero the gradient buffers
+			# loss = 0
+			ds1 = compute_ds(X)
+			sigma = np.quantile(ds1, q=0.25)
+			s1 = compute_x_kl(torch.from_numpy(X).float(), sigma)
+			s2 = compute_y_kl(torch.from_numpy(X).float(), net)
+			# print(epoch, sigma, s1, s2)
+			optimizer.zero_grad()  # zero the gradient buffers
+			loss = 0
 
-				for r in range(X2.shape[0]):  # replace it with the nearest neighbours to fast the training.
-					# X_, y_ = compute_Xy2(X2[r], X2)
-					X_ = np.asarray([np.concatenate([X2[r], X2[c]]) for c in range(X2.shape[0])])
-					y_cos_ = np.asarray(
-						[np.asarray(cos_sim(X2[r], X2[c])) for c in range(X2.shape[0])])  # cosine similarity: [-1, 1]
-					# X_, y_ = torch.from_numpy(X_).float(), torch.from_numpy(y_).float()
-					X_ = torch.from_numpy(X_).float()
-					y_cos_ = torch.from_numpy(y_cos_).float()
-					# in your training loop:
+			for i in range(N):  # for each x_r, find its neighbours: n_samples
+				# X_, y_ = compute_Xy2(X2[r], X2)
+				n_samples = N
+				# replace = True if N < n_samples else False
+				# X2 = sklearn.utils.resample(X1, replace=replace, n_samples=n_samples, random_state=r)
+				indices = knn.kneighbors(X[i].reshape(1, -1), n_neighbors=n_samples, return_distance=False)[0]
+				# # indices = knn.radius_neighbors(X[i].detach().numpy().reshape(1, -1), radius=10.0, return_distance=False)[0]
+				# X2 = torch.from_numpy(X[indices]).float()
+				X2 = X[indices]
+				# if len(X2) < 2: continue
+				X_ = np.asarray([np.concatenate([X1[i], X2_]) for X2_ in X2])
+				y_cos_ = np.asarray([np.asarray(cos_sim(X1[i], X2_)) for X2_ in X2])  # cosine similarity: [-1, 1]
+				# X_, y_ = torch.from_numpy(X_).float(), torch.from_numpy(y_).float()
+				X_ = torch.from_numpy(X_).float()
+				# y_cos_ = torch.from_numpy(y_cos_).float()
 
-					optimizer.zero_grad()  # zero the gradient buffers
-					loss = 0
+				O = net(X_)
 
-					out = net(X_)
-					# out = (out[:, :out_dim] - out[:, out_dim:]).pow(2).sum(
-					# 	axis=1)/out_dim  # squared euclidean distance of X1 and X2
-					# out = (out[:, :out_dim] - out[:, out_dim:]).pow(2).sum(axis=1)
-					# d1 = dist2_tensor(out[:, :out_dim], out[:, out_dim:])
-					# loss = criterion(d1, y_)
-					# loss = (d1-y_).pow(2).sum()
-					# print(r, y_.shape, d1.shape)
-					# d2 = torch.cdist(out[:, :out_dim], out[r, out_dim:].reshape((1, out_dim))).sum()  # should be 0
-					# loss += d2
-					# d2 = torch.cdist(out[:, :out_dim], out[r, :out_dim].reshape((1, out_dim))).sum()  # should be 0
-					# loss += d2
-					# print(r, X2.shape[0])
-					ss1 = np.sum(np.exp(cdist(X2[r, :].reshape((1, -1)), X2)))
-					ss2 = torch.cdist(out[r, :out_dim].reshape((1, -1)), out[r, out_dim:].reshape((1, out_dim))).exp().sum()# should be 0
+				# sum_p_ji = 0
+				ds_tmp = [dist2_tensor(torch.from_numpy(X[i]), torch.from_numpy(X[j])).detach().numpy().item() for j in range(N) if i != j]
+				n_neighbors = 3
+				q = n_neighbors / (N - 1)
+				sigma_i = np.quantile(ds_tmp, q) / np.sqrt(2)
+				sum_x_i = np.sum([gaussian_torch(torch.from_numpy(X[i]), torch.from_numpy(X[j]), sigma_i).detach().numpy().item()
+				                  for j in range(N) if i != j])
+				# # sum_x_i = np.sum([t_distribution_torch(X[i], X[j]).detach().numpy().item()
+				# #                   for j in range(N) if i != j])
+				sum_y_i = 0
+				for j in range(N):
+					X_ij = torch.from_numpy(np.concatenate([X[i], X[j]])).float()
+					y_ij = net(X_ij).detach()
+					sum_y_i += t_distribution_torch(y_ij[:out_dim], y_ij[out_dim:]).numpy().item()
 
-					alpha = 1
-					for c in range(X2.shape[0]):
-						y_cos2_ = cos_sim_torch(out[r, :out_dim], out[c, out_dim:])
-						loss += alpha * (torch.exp((y_cos2_ - y_cos_[c]).abs().sum())-1).abs()
-						cos2_ = cos_sim_torch(out[r, :out_dim], out[c, :out_dim])  # itself
-						loss += alpha * (torch.exp((cos2_ - 1).abs().sum())-1).abs()
+				for j, X_ij in enumerate(X_):
+					# d1 = np.square(X1[r] - X2[c])
+					# d2 = (torch.from_numpy(seen[tuple(X1[r])]) - out[c, out_dim:]).pow(2)
 
-						# d1 = np.square(X2[r]-X2[c])
-						# l1 = max(np.linalg.norm(d1), 1e-5)
-						# d2 = (out[r, :out_dim] - out[c, out_dim:]).pow(2)
-						# l2 = max(torch.norm(d2), 1e-5)
-						# l1 = l2 = 1
-						# loss += (np.sum(d1)/l1 - d2.sum()/l2).pow(2).sum()
+					p_ij = gaussian_torch(X_ij[:in_dim], X_ij[in_dim:], sigma_i) / sum_x_i
+					# p_ij = gaussian_torch(X_ij[:in_dim], X_ij[in_dim:], sigma) / s1
+					# p_ij = t_distribution_torch(X[i], X_j) / sum_x_i
 
-						d1 = np.abs(X2[r] - X2[c])
-						d2 = (out[r, :out_dim] - out[c, out_dim:]).abs()
-						# loss += (np.max(d1) - torch.max(d2)).pow(2).sum()  # max difference
-						# loss += (np.sum(d1) - torch.sum(d2)).abs() # sum difference
-						# loss += (out[r, :out_dim] - out[c, :out_dim]).abs().sum()
-						# d1 = np.exp(-np.sum(d1))
-						# d2 = torch.exp(-d2.sum())
-						# loss += d1 * torch.log(d1/d2) + (1-d1)*torch.log((1-d1)/(1-d2)+1e-5)  # cross entropy
-						beta = 1
-						loss += (torch.exp((np.sum(d1) - beta * torch.sum(d2)).pow(2).sum())-1).abs()
-						# (2, 4)/6 == (1, 2)/3, so dividing ss1 (6, 3) only maintain the ratio, not the distance in original space.
-						# loss += (torch.exp((np.sum(d1) / ss1 - beta * torch.sum(d2) / ss2).pow(2).sum()) - 1).abs()
-						d3 = (out[r, out_dim:] - out[c, :out_dim]).abs()
-						loss += (torch.exp(d3.sum())-1).abs()
+					# q_ij = t_distribution_torch(y_i, y_j) / sum_y_ij
+					q_ij = t_distribution_torch(O[j][:out_dim], O[j][out_dim:]) / sum_y_i
+					# p_ij = torch.clamp(p_ij, min=1e-10)
+					# q_ij = torch.clamp(q_ij, min= 1e-10)
 
-					# d3 = (out[r, :out_dim]-out[r, out_dim:]).pow(2).sum()   # dist(X1', X1') # the distance of itself.
-					# loss += d3
-					# print((d1-y_).abs()[:batch_size])
+					# w_ij = 1
+					w_ij = p_ij
+					# w_ij = torch.clamp(p_ij, min=1e-10, max=1)
+					# w_ij = 1/p_ij**2
+					loss += (w_ij * torch.log2(torch.clamp(p_ij / q_ij, min=1e-10, max=1e+10)).abs())
+					# loss += ((p_ij / q_ij -1).square())
+					# loss += w_ij*(p_ij - q_ij).abs()
+					# print(loss, w_ij, p_ij, q_ij, torch.log2(p_ij / q_ij),)
+					# ds.append((p_ij.detach().numpy().item(), q_ij.detach().numpy().item()))
 
-					loss.backward()
-					optimizer.step()  # Does the update
-					losses.append(loss.item())
-					L += loss.item()
+					# cos1_ = cos_sim_torch(X_ij[:in_dim], X_ij[in_dim:])
+					# cos2_ = cos_sim_torch(O[j][:out_dim], O[j][out_dim:])
+					# loss += (cos1_-cos2_).pow(2)        # cosine similarity
+
+					if j > 0:
+						loss += (O[0][:out_dim] - O[j][:out_dim]).pow(2).sum()  # itself.
+
+			loss.backward()
+			optimizer.step()  # Does the update
+			losses.append(loss.item())
+			L += loss.item()
 			print(f'{epoch + 1}/{n_epochs}, loss: {L}')
 			history['loss'].append(L)
-		if epoch % 50==0:
-			print(scheduler.get_lr())
-			scheduler.step()  # adjust learning rate
+
+			if epoch % 50==0:
+				print(scheduler.get_lr())
+				scheduler.step()  # adjust learning rate
 
 		plt.plot(history['loss'])
 		plt.ylabel('loss')
@@ -302,7 +432,7 @@ def main():
 	nrows, ncols = 6, 7
 	fig, ax = plt.subplots(nrows, ncols, figsize=(25, 20))  # width, height
 	# fig = plt.figure(figsize=(15, 15))  # width, height
-	f = os.path.join('out', f'projection.png')
+	f = os.path.join('../out', f'projection.png')
 	check_path(os.path.dirname(f))
 	r = 0
 	X_res = []
@@ -341,7 +471,7 @@ def main():
 		# plt.show()
 		c += 1
 
-		X2 = out[:, out_dim:].detach().numpy()  # for the rest of projected data.
+		X2 = out[:, out_dim:].detach().numpy()
 		print(X2.shape, np.max(X2, axis=0) - np.min(X2, axis=0))
 		ax[r][c].scatter(X2[:, 0], X2[:, 1], c=y)
 		# for i_ in range(X2.shape[0]):

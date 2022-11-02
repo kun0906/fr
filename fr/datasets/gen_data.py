@@ -1,3 +1,4 @@
+import collections
 import copy
 import os
 
@@ -35,7 +36,7 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 		df = pd.read_csv(file)
 		X_train = df.iloc[:, 1:].values
 		y_train = df.label.values
-
+		print(f'X_train.shape: {X_train.shape}, y_train: {collections.Counter(y_train)}')
 		# file = os.path.join(in_dir, 'mnist_test.csv')
 		# df = pd.read_csv(file)
 		# X_test = df.iloc[:, 1:].values
@@ -44,7 +45,13 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 		                                              train_size=n_samples * 10, shuffle=True,
 		                                              stratify=y_train,
 		                                              random_state=random_state)  # train set = 1-ratio
+		# for i, (X1, y1) in enumerate(zip(X_train_, y_train_)):
+		# 	from PIL import Image
+		# 	im = Image.fromarray(X1.reshape((28, 28)).astype(np.uint8))
+		# 	im.save(f"out/{i}-{y1}.png")
+
 		X, y = X_train_ / 255, y_train_
+
 	elif data_type == '1gaussian':
 		r = np.random.RandomState(seed=random_state)
 		X = r.multivariate_normal([0, 0], [[0.1, 0], [0, 0.1]], size=n_samples)
@@ -90,6 +97,39 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 			else:
 				X = np.concatenate([X, X1], axis=0)
 				y = np.concatenate([y, y1], axis=0)
+	elif data_type == '3gaussians-10dims':
+		r = np.random.RandomState(seed=random_state)
+		n_clusters = 3
+		for i in range(n_clusters):
+			mu = r.uniform(low=0, high=5, size=n_clusters)
+			cov = np.asarray([0.3] * n_clusters)
+			cov = np.diag(np.array(cov))
+			X1 = r.multivariate_normal(mu, cov, size=n_samples)
+			y1 = [i] * X1.shape[0]
+
+			# X_outliers =  r.multivariate_normal(mu*3, cov, size=n_samples)
+			# y_outliers = [2*i+1] * X1.shape[0]
+			#
+			# X1 = np.concatenate([X1, X_outliers], axis=0)
+			# y1 = np.concatenate([y1, y_outliers], axis=0)
+
+			if i == 0:
+				X = copy.deepcopy(X1)
+				y = copy.deepcopy(y1)
+			else:
+				X = np.concatenate([X, X1], axis=0)
+				y = np.concatenate([y, y1], axis=0)
+
+		mu = r.uniform(low=10, high=12, size=n_clusters)
+		cov = np.asarray([0.1] * n_clusters)
+		cov = np.diag(np.array(cov))
+		percent = 0.01
+		n_outliers =  int(n_samples*percent)
+		X_outliers =  r.multivariate_normal(mu, cov, size=n_outliers)
+		y_outliers = [4] * X_outliers.shape[0]
+
+		X = np.concatenate([X, X_outliers], axis=0)
+		y = np.concatenate([y, y_outliers], axis=0)
 
 	else:
 		X, y = datasets.make_circles(n_samples=n_samples*2, factor=0.5, noise=0.05, random_state=random_state)
@@ -119,18 +159,18 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 		# 	n_samples=n_samples, cluster_std=[1.0, 2.5, 0.5], random_state=random_state
 		# )
 
-		# ============
-		# Set up cluster parameters
-		# ============
-		plt.figure()
-		# plt.subplots_adjust(
-		# 	left=0.02, right=0.98, bottom=0.001, top=0.95, wspace=0.05, hspace=0.01
-		# )
-		plt.scatter(X[:, 0], X[:, 1], c=y)
+	# ============
+	# Set up cluster parameters
+	# ============
+	plt.figure()
+	# plt.subplots_adjust(
+	# 	left=0.02, right=0.98, bottom=0.001, top=0.95, wspace=0.05, hspace=0.01
+	# )
+	plt.scatter(X[:, 0], X[:, 1], c=y)
 
-		if is_show: plt.show()
-		plt.close()
-		print('test')
+	if is_show: plt.show()
+	plt.close()
+	# print('test')
 	return X, y
 
 

@@ -1,7 +1,16 @@
+V0.0.5-4: Update init_iters and update_iters
+
+1. Update init_iters = (75, 225), where 1000 * 0.3 = 300 = 75+225 (250:750=75:225)
+   Update update_iters = (35, 105), where 1000 * 0.7 = 700 = 5 batches * (35+105) (here, we have 5 batches)
+2. Set is_optimized = True
+3. Install perplexity.pyx (pip install .)
+
+
+
 V0.0.4-1: Add single neural network
 
-1. add single neural network with different attempts.
-2. add anim.py
+1. Add single neural network with different attempts.
+2. Add anim.py
 
 
 1. Implement perplexity to compute sigma for KL

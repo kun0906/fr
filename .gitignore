@@ -2,6 +2,13 @@
 .idea
 /fr/datasets/MNIST/mnist/
 
-**/*.pyc
+/**/*.pyc
+*.pyc
+/fr/datasets/__pycache__/*
 .DS_Store
 /**/.DS_Store
+/parametric_tsne_pytorch/
+/Parametric t-SNE/
+/fr/out/*
+
+/fr/inc_tsne2.py

@@ -88,7 +88,7 @@ def cos_sim_torch(x1, x2):
 
 
 def t_distribution_torch(x1, x2):
-	return 1 / (1 + (x1 - x2).pow(2).sum().pow(2))
+	return 1 / (1 + (x1 - x2).pow(2).sum())
 
 
 def gaussian_torch(x1, x2, sigma=1):
@@ -101,7 +101,7 @@ def compute_j_i(X, i, sigma_i=1):
 	sum_x_ji_ = 0  # s_j|i: xi will pick xj as its neighbor, under a Gaussian centered at xi
 	for k in range(N):
 		if i == k: continue
-		sum_x_ji_ += gaussian_torch(X[i], X[k], sigma_i).detach().numpy()
+		sum_x_ji_ += gaussian_torch(X[i], X[k], sigma_i).detach().numpy().item()
 
 	return sum_x_ji_
 
@@ -112,7 +112,7 @@ def compute_i_j(X, j, sigma_j=1):
 	sum_x_ij_ = 0  # s_i|j: xj will pick xi as its neighbor, under a Gaussian centered at xj
 	for k in range(N):
 		if j == k: continue
-		sum_x_ij_ += gaussian_torch(X[j], X[k], sigma_j).detach().numpy()
+		sum_x_ij_ += gaussian_torch(X[j], X[k], sigma_j).detach().numpy().item()
 
 	return sum_x_ij_
 
@@ -142,7 +142,7 @@ def t_distribution_all(X):
 	for k in range(N):
 		for l in range(N):
 			if k == l : continue
-			s.append(1/(1+np.sum(np.square(X[k]-X[l])))**2)   #
+			s.append(1/(1+np.sum(np.square(X[k]-X[l]))))   #
 	return s
 
 
@@ -155,7 +155,7 @@ def compute_y_kl(X, net):
 		for l in range(N):
 			if l == k: continue
 			y_l = net(X[l])
-			sum_y_kl += t_distribution_torch(y_k, y_l).detach().numpy()
+			sum_y_kl += t_distribution_torch(y_k, y_l).detach().numpy().item()
 	return sum_y_kl
 
 
@@ -218,11 +218,117 @@ def compute_lower_space(X, net):
 	ds = dist2_tensor(torch.min(ds), 0) + torch.max(ds, 1)
 
 
+def compute_entropy(X, i, sigma):
+	N, d = X.shape
+	# p_ji_ = gaussian_torch(X[i], X[j], sigma)/compute_j_i(X, i, sigma_i=sigma)
+	# H (P_i) = torch.sum([- p_ji_ * np.log2(p_ji_) for j in range(N) ])
+	H = 0
+	for j in range(N):
+		if i == j: continue
+		p_ji_ = gaussian_torch(X[i], X[j], sigma).detach()/compute_j_i(X, i, sigma_i=sigma)
+		if p_ji_ == 0:
+			H += 0
+		else:
+			H += -1 * p_ji_ * torch.log2(p_ji_)
+
+	return H.numpy().item()
+
+
+def compute_sigma_i(X, i, perplexity=5, verbose=1):
+	"""
+
+	:param p_ji_:
+		p_j|i: Xi chooses Xj as a neighbour, under a Gaussian centered at Xi
+	:param perplexity:
+		perplexity = 2 ** (H(P_i))
+		where, P_i = - sum (p_j|i * log2(p_j|i))   over all j.
+
+	:param verbose:
+	:return:
+	"""
+
+	l = 0
+	r = 1000
+	cnt = 0
+	# the perplexity increases monotonically with the variance σi (sigma**2), so we can use binary search.
+	while l < r:
+		m = r - (r-l)/2  # choose m as sigma and check if meet the given perplexity
+		H_p_i = compute_entropy(X, i, sigma=m)   # H(P_i)
+		if 2**H_p_i >= perplexity:
+			r = m
+		else:
+			l = m+1
+		cnt +=1
+	sigma_i = l
+	if verbose >= 5:
+		print(f'i: {i}, where, l:{l} =? r:{r}, it takes cnt ({cnt}) steps to converge. Sigma_i: {l}')
+
+	# # from sklearn: not dig into it yet.
+	# # Compute conditional probabilities such that they approximately match
+	# # the desired perplexity
+	# distances.sort_indices()
+	# n_samples = distances.shape[0]
+	# distances_data = distances.data.reshape(n_samples, -1)
+	# distances_data = distances_data.astype(np.float32, copy=False)
+	# conditional_P = sklearn.manifold._utils._binary_search_perplexity(
+	# 	distances_data, desired_perplexity, verbose
+	# )
+	# assert np.all(np.isfinite(conditional_P)), "All probabilities should be finite"
+
+	return sigma_i
+
+
+def compute_sigma_j(X, j, perplexity=5, verbose=1):
+	"""
+
+	:param p_ij_:
+		p_i|j: Xj chooses Xi as a neighbour, under a Gaussian centered at Xj
+	:param perplexity:
+		perplexity = 2 ** (H(P_j))
+		where, P_j = - sum (p_i|j * log2(p_i|j))   over all i.
+
+	:param verbose:
+	:return:
+	"""
+
+	l = 0
+	r = 100
+	cnt = 0
+	# the perplexity increases monotonically with the variance σi (sigma**2), so we can use binary search.
+	while l < r:
+		m = r - (r-l)/2  # choose m as sigma and check if meet the given perplexity
+		H_p_j = compute_entropy(X, j, sigma=m)   # H(P_i)
+		if 2**H_p_j >= perplexity:
+			r = m
+		else:
+			l = m+1
+		cnt +=1
+	sigma_j = l
+	if verbose >= 5:
+		print(f'j: {j}, where, l:{l} =? r:{r}, it takes cnt ({cnt}) steps to converge. Sigma_j: {l}')
+
+	return sigma_j
+
+def compute_P_ij(X, perplexity = 5 ):
+	P_ij = {}
+	N, d = X.shape
+	for i in range(N):
+		X_i = X[i]
+		sigma_i = compute_sigma_i(X, i, perplexity)
+		sum_x_ji_ = compute_j_i(X, i, sigma_i)
+		for j in range(N):
+			if i == j: continue
+			X_j = X[j]
+			p_ji_ = gaussian_torch(X_i, X_j, sigma_i) / sum_x_ji_          # fixed x_i. X_i picks X_j as its neighbour.
+			P_ij[tuple(X_i, X_j)] = p_ji_
+
+	return P_ij
+
 def main():
-	out_dir = 'out'
-	data_name = '2gaussians'
+	out_dir = '../out'
+	# data_name = '2gaussians'
 	data_name = 'mnist'
-	# data_name = '5gaussians-5dims'
+	data_name = '5gaussians-5dims'
 	X_raw, y_raw = gen_data.gen_data(n=2, data_type=data_name, is_show=False, random_state=42)
 	# X_raw = np.asarray([[0,0], [1, 3], [2, 0], [-3, 3]])
 	# y_raw = np.asarray([0, 0, 1, 1])
@@ -283,6 +389,7 @@ def main():
 	n, d = X_raw.shape
 	out_dim = 2
 	n_epochs = 50
+	perplexity = 2
 	model_file = os.path.join(out_dir, f'net_ep_{n_epochs}-single-nn.pt')
 	if os.path.exists(model_file):
 		os.remove(model_file)
@@ -312,6 +419,8 @@ def main():
 		)
 		knn.fit(X_raw)
 		# distances_nn = knn.kneighbors_graph(mode="distance")
+		sigmas = {}
+		sum_x = {}
 
 		for epoch in range(n_epochs + 1):
 			# shuffle X, y
@@ -319,152 +428,88 @@ def main():
 			N, d = X.shape
 			# X, y = sklearn.utils.shuffle(X, y, random_state=epoch)
 			X = torch.from_numpy(X).float()
+
+			sum_y_ij = compute_y_kl(X, net)     # we need to recompute because the net is updated
+
+			# P_ij = compute_P_ij(X, perplexity)
+
 			L = 0
 			optimizer.zero_grad()  # zero the gradient buffers
 			loss = 0
 			losses = []
-			# if epoch == 0:
-			# 	mn = 1
-			# 	mn2 = 1
-			# 	s1 = 1
-			# 	s2 = 1
-			# else:
-			# 	mn = pre_mn.item()
-			# 	mn2 = pre_mn2.item()
-			# 	s1 = pre_s1.item()
-			# 	s2 = pre_s2.item()
-			pre_mn = 0
-			pre_mn2 = 0
-			pre_s1 = 0
-			pre_s2 = 0
-			s_i = 0
-			l_i = 0
-			# s1 = np.sum(pdist(X_raw, metric='seuclidean'))  # sqrt euclidean
-			# sigma = 3
-			# X_ds = gaussian_all(X_raw, sigma=sigma) # n(n-1)/2
-
 
 			ds = []
-			seen = {}
+			# seen = {}
 			for i in range(N):
+				# sigma_i = 1
+				st = datetime.datetime.now()
+				k1 = tuple(X[i].detach().numpy())
+				if k1 not in sigmas:   # if X_i is fixed, then sigma_i is fixed (no need to recompute)
+					sigma_i = compute_sigma_i(X, i, perplexity)
+					sigmas[k1] = sigma_i
+				else:
+					sigma_i = sigmas[k1]
 
-				X_ds = [dist2_tensor(X[k], X[i]).detach().numpy().item() for k in range(N) if k != i]
-				# d_u = np.max(ds)
-				# print(f'd_u: {np.quantile(ds, q=[0, 0.25, 0.5, 0.75, 1.0])}')
-				sigma = np.quantile(X_ds, q=0.25)
-				X_ds = gaussian_all(X_raw, sigma=sigma)  # n(n-1)/2
-				# X_ds = t_distribution_all(X_raw)
-				mn, mx = np.min(X_ds), np.max(X_ds)
-				s1 = np.sum(X_ds)
+				k2 = tuple((k1, sigma_i))  # if k2 is fixed, then sum_x_ji_ is fixed.
+				if k2 not in sum_x:
+					# for fixed i,X_i chooses X_j as a neighbour.
+					sum_x_ji_ = compute_j_i(X, i, sigma_i)
+					sum_x[k2] = sum_x_ji_
+				else:
+					sum_x_ji_ = sum_x[k2]
+				ed = datetime.datetime.now()
+				# print(i, sigma_i, sum_x_ji_, len(sigmas), len(sum_x), (ed-st).seconds)
 
-				X_i = X[i]
-				y_i = net(X_i)
-				# y_i = torch.zeros((1, out_dim))
-				# seen[tuple(X[i])] = y_i
-				# indices = knn.kneighbors(X_i.detach().numpy().reshape(1, -1), n_neighbors=n_neighbors, return_distance=False)[0]
-				# indices = knn.radius_neighbors(X_i.detach().numpy().reshape(1, -1), radius=10.0, return_distance=False)[
-				# 	0]
-				# X2 = torch.from_numpy(X_raw[indices]).float()
-				# if len(X2) < 2: continue
-				optimizer.zero_grad()  # zero the gradient buffers
-				loss = 0
+				sum_p_ji = 0
+				y_i = net(X[i])
+				for j in range(0, N):
+					if i == j: continue
+					st = datetime.datetime.now()
+					# sigma_j = 1
+					k1 = tuple(X[j].detach().numpy())
+					if k1 not in sigmas:
+						sigma_j = compute_sigma_j(X, j, perplexity)
+						sigmas[k1] = sigma_j
+					else:
+						sigma_j = sigmas[k1]
+					k2 = tuple((k1, sigma_j))
+					if k2 not in sum_x:
+						sum_x_ij_ = compute_i_j(X, j, sigma_j)  # for fixed j
+						sum_x[k2] = sum_x_ij_
+					else:
+						sum_x_ij_ = sum_x[k2]
+					ed = datetime.datetime.now()
+					p_ji_ = gaussian_torch(X[i], X[j], sigma_i) / sum_x_ji_  # p_j|i
+					p_ij_ = gaussian_torch(X[j], X[i], sigma_j) / sum_x_ij_  # p_i|j
+					p_ij = (p_ji_ + p_ij_) / (2 * N)
+					# print(i, j, sigma_j, p_ji_, p_ij_, p_ij, (ed-st).seconds, len(sigmas), len(sum_x))
+					# sum_p_ji += p_ji_
+					s1 = sum_p_ji
+					s2 = sum_y_ij
 
-				# if tuple(X_i) not in seen:
-				# 	y_i = net(X_i).detach()
-				# else:
-				# 	y_i = seen[tuple(X_i)]
+					y_j = net(X[j])
+					q_ij = t_distribution_torch(y_i, y_j) / sum_y_ij
 
-				y = net(X)
-				y_ds = t_distribution_all(y.detach().numpy())
-				mn2, mx2 = np.min(y_ds), np.max(y_ds)
-				s2 = np.sum(y_ds)
-				# ds_torch = sc
-				# mn2, mx2 = torch.min(ds_torch).detach().numpy().item(), torch.max(ds_torch).detach().numpy().item()
-				# s2 = torch.sum(ds_torch).detach().numpy().item()
-
-				X2 = X
-				for X_j in X2:
-					if torch.all(X_j == X_i): continue
-					y_j = net(X_j)
-					# if tuple(X_j) not in seen:
-					# 	y_j = net(X_j)
-					# else:
-					# 	y_j = seen[tuple(X_j)]
-					# pre_mn = max(pre_mn, dist2_tensor(X_i, X_j).detach().numpy())
-					# pre_mn2 = max(pre_mn2, dist2_tensor(y_i, y_j).detach().numpy())
-					# pre_s1 += dist2_tensor(X_i, X_j).detach().numpy()
-					# pre_s2 += dist2_tensor(y_i, y_j).detach().numpy()
-					# a = dist2_tensor(torch.exp(dist2_tensor(X_i, X_j)/mn)-1, dist2_tensor(y_i, y_j).pow(1/2))
-					# a = dist2_tensor(2.7**(dist2_tensor(X_i, X_j) / mn) - 1,
-					#                  dist2_tensor(y_i, y_j).pow(1 / 2))
-					power = 1
-					# mx = 14.599
-					# mn = 2.324
-					rng = mx - mn
-					sigma_j = sigma
-					# a = ((dist2_tensor(X_i, X_j) - mn) / rng).detach().numpy().item()
-					# d_ij = ((dist2_tensor(X_i, X_j) - mn) / rng) ** power  # normalized to [0, 1]
-					# d_ij = ((dist2_tensor(X_i, X_j)).pow(2) / s1 ) ** power  # normalized to [0, 1]
-					d_ij = (torch.clamp(torch.exp(-(X_i-X_j).pow(2).sum()/(2*sigma_j**2))-mn, min=1e-10, max= 1e+10))/ (mx-mn) # sum all d_ij is 1
-					# d_ij = t_distribution_torch(X_i, X_j) / s1
-					# mn2, mx2 = compute_lower_space(X, net)
-					# mn2, mx2 = 0, 1
-					# d_ij2 = (dist2_tensor(y_i, y_j) - mn2) / (mx2 - mn2)  # / s2           # expected to [0, 1]
-					# d_ij2 = (dist2_tensor(y_i, y_j)) / s2  # / s2
-					# d_ij2 = (t_distribution_torch(y_i, y_j)) / s2  # / s2      # expected to [0, 1]
-					d_ij2 = ((t_distribution_torch(y_i, y_j)) - mn2).abs() / (mx2-mn2) # / s2      # expected to [0, 1]
 					w_ij = 1
-					w_ij = d_ij
-					# w_ij = 1/d_ij
-					# w_ij = 1/(a**2)        # decreased function
-					# w_ij = np.exp(-a*5)     # decreased function
-					# w_ij = np.abs(a-0.5)**1   # bowl shape function
-					# diff = w_ij * dist2_tensor(d_ij, d_ij2)
-					# diff = w_ij * (torch.log2(d_ij/d_ij2)).abs() # the larger the d_ij, the smaller for the loss.
-					# diff = w_ij * ((d_ij - d_ij2) ** 2)  # the larger the d_ij, the smaller for the loss.
-					diff = w_ij * (torch.log2(d_ij / d_ij2)).abs()  # the larger the d_ij, the smaller for the loss.
-					# diff = w_ij * (torch.abs(d_ij / d_ij2-1))**2  # t
-					ds.append((d_ij.detach().numpy(), d_ij2.detach().numpy()))
-					# w_ij = diff.detach()
-					# s_i += diff.detach()
-					w_ij = s_i = 1
-					# a = (dist2_tensor(X_i, X_j) / mn)**5
-					# b =  dist2_tensor(y_i, y_j)
-					# print(i, torch.log2(d_ij/d_ij2))
-					# diff = d_ij * (torch.log2(d_ij/d_ij2)).abs()
-					# a = dist2_tensor(X_i, X_j) / dist2_tensor(y_i, y_j)
-					# l_i += w_ij * diff  # weighted loss for each X_i
-					# loss += dist2_tensor(cos_sim_torch(X_i, X_j), cos_sim_torch(y_i, y_j))
-					alpha = 1
-					loss += diff
+					w_ij = p_ij
+					# w_ij = p_ij**(1/2)
+					# w_ij = 1/p_ij**2
+					loss += w_ij * torch.log2(p_ij / q_ij).abs()
+					# loss += ((p_ij / q_ij -1).square())
+					# loss += w_ij*(p_ij - q_ij).square()
 
-				# y = net(X)
-				# ds_torch = torch.pdist(y)
-				# loss += dist2_tensor(torch.min(ds_torch), 0) + dist2_tensor(torch.max(ds_torch), 1)
-
-				loss.backward()
-				optimizer.step()  # Does the update
-
-			if epoch == 0: continue
-			loss += l_i / s_i
-			# print(i, s_i, l_i, loss)
-			losses.append(loss)
-			# loss += dist2_tensor(dist2_tensor(X[i], X[j]), dist2_tensor(y_i, y_j))  + alpha * dist2_tensor(cos_sim_torch(X[i], X[j]), cos_sim_torch(y_i, y_j))
-			# print(i, j, dist2_tensor(X[i], X[j]), dist2_tensor(y_i, y_j), loss)
-			# print(i, sum_p_ji)
-			if epoch % 50 == 0:
+					ds.append((p_ij.detach().numpy().item(), q_ij.detach().numpy().item()))
+				# print(i, sigma_i, sum_x_ji_, loss)
+			# plot_xy(X, y, net, epoch
+			if epoch%10 == 0:
 				plot_hist(ds, epoch)
-			# loss = 0
-			# tmp = sorted(losses, reverse=True)[:2]
-			# for v in tmp:
-			# 	loss += v
-			# plot_xy(X, y, net, epoch)
-			# loss = loss / (N*N)
-			# loss.backward()
-			# optimizer.step()  # Does the update
+			loss.backward()
+			optimizer.step()  # Does the update
+
+			losses.append(loss)
 
 			L += loss.item()
-			print(f'{epoch + 1}/{n_epochs}, loss: {L}, mn: {mn}, mn2: {mn2}, s1: {s1}, s2:{s2}')
+			print(f'{epoch + 1}/{n_epochs}, loss: {L}, s1: {s1}, s2:{s2}')
 			history['loss'].append(L)
 		# if epoch % 50 == 0:
 		# 	print(f'*** lr:{scheduler.get_lr()}')
@@ -493,9 +538,9 @@ def main():
 			y_i = net(X[i])
 			y_j = net(X[j])
 			# print(i, j, (dist2_tensor(X[i], X[j]) / mn) ** power, dist2_tensor(y_i, y_j).pow(1 / 2))
-			print(i, j, (gaussian_torch(X[i], X[j],  sigma=sigma)-mn)/(mx-mn),(t_distribution_torch(y_i, y_j)-mn2)/(mx2-mn2))
-			# print(i, j, gaussian_torch(X[i], X[j], sigma=1), t_distribution_torch(y_i, y_j))
-			s_i += dist2_tensor((dist2_tensor(X[i], X[j]) / mn) ** power, dist2_tensor(y_i, y_j).pow(1 / 2)) * 2
+			# print(i, j, (gaussian_torch(X[i], X[j],  sigma=sigma)-mn)/(mx-mn),(t_distribution_torch(y_i, y_j)-mn2)/(mx2-mn2))
+			print(i, j, gaussian_torch(X[i], X[j], sigma=1), t_distribution_torch(y_i, y_j))
+			# s_i += dist2_tensor((dist2_tensor(X[i], X[j]) / mn) ** power, dist2_tensor(y_i, y_j).pow(1 / 2)) * 2
 	print(f's_i: {s_i}')
 
 	f = os.path.join(out_dir, f'{data_name}-Euclidean.png')

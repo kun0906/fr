@@ -99,7 +99,7 @@ def compute_Xy2(X1, X):
 
 
 def dist2_tensor(X1, X2):
-	return (X1 - X2).pow(2).sum(axis=1)
+	return (X1 - X2).pow(2).sum()
 
 
 # return (X1 - X2).abs().sum(axis=1)
@@ -133,17 +133,17 @@ def cos_sim_torch(x1, x2):
 
 
 def main():
-	X_raw, y_raw = gen_data.gen_data(n=200, is_show=False, random_state=42)
+	X_raw, y_raw = gen_data.gen_data(n=20, is_show=False, random_state=42)
 	print(X_raw.shape, collections.Counter(y_raw))
 	n, d = X_raw.shape
 	out_dim = d
-	n_epochs = 500
-	model_file = f'net_ep_{n_epochs}.pt'
-	if os.path.exists(model_file):
-		os.remove(model_file)
+	n_epochs = 50
+	model_file = f'net_ep_{n_epochs}-wv.pt'
+	# if os.path.exists(model_file):
+	# 	os.remove(model_file)
 
 	if not os.path.exists(model_file):
-		net = Net(in_dim=2 * d, out_dim=2 * out_dim)
+		net = Net(in_dim=3 * d, out_dim=3 * out_dim)
 		print(net)
 		params = list(net.parameters())
 		print(len(params))
@@ -161,38 +161,48 @@ def main():
 			n, d = X.shape
 			X, y = sklearn.utils.shuffle(X, y, random_state=epoch)
 			losses = []
+			loss_ = 0
 			for i in range(0, n, batch_size):
 				X2 = X[i:i + batch_size, :]
-				for r in range(X2.shape[0]):    # replace it with the nearest neighbours to fast the training.
-					X_, y_ = compute_Xy2(X2[r], X2)
-					y_cos_ = np.asarray([np.asarray(cos_sim(X2[r], X2[c])) for c in range(X2.shape[0])]) # cosine similarity: [-1, 1]
-					X_, y_ = torch.from_numpy(X_).float(), torch.from_numpy(y_).float()
-					y_cos_ = torch.from_numpy(y_cos_).float()
-					# in your training loop:
-					optimizer.zero_grad()  # zero the gradient buffers
-					out = net(X_)
-					# out = (out[:, :out_dim] - out[:, out_dim:]).pow(2).sum(
-					# 	axis=1)/out_dim  # squared euclidean distance of X1 and X2
-					# out = (out[:, :out_dim] - out[:, out_dim:]).pow(2).sum(axis=1)
-					d1 = dist2_tensor(out[:, :out_dim], out[:, out_dim:])
-					# loss = criterion(d1, y_)
-					loss = (d1-y_).pow(2).sum()
-					# print(r, y_.shape, d1.shape)
-					d2 = torch.cdist(out[:, :out_dim], out[r, out_dim:].reshape((1, out_dim))).sum()  # should be 0
-					loss += d2
-					# d2 = torch.cdist(out[:, :out_dim], out[r, :out_dim].reshape((1, out_dim))).sum()  # should be 0
-					# loss += d2
-					# print(r, X2.shape[0])
-					for c in range(X2.shape[0]):
-						y_cos2_ = cos_sim_torch(out[r, :out_dim], out[c, out_dim:])
-						loss += 10*(y_cos2_ - y_cos_[c]).pow(2).sum()
+				m = X2.shape[0]
+				for r in range(m):    # replace it with the nearest neighbours to fast the training.
+					for k in range(r, m):
+						for t in range(k, m):
+							d12 = dist2(X2[r], X2[k])   # d12 == d21
+							d13 = dist2(X2[r], X2[t])   # d13 == d31
+							d23 = dist2(X2[k], X2[t])   # d23 == d32
 
-					# d3 = (out[r, :out_dim]-out[r, out_dim:]).pow(2).sum()   # dist(X1', X1') # the distance of itself.
-					# loss += d3
-					# print((d1-y_).abs()[:batch_size])
-					loss.backward()
-					optimizer.step()  # Does the update
-					losses.append(loss.item())
+							c12 = cos_sim(X2[r], X2[k])
+							c13 = cos_sim(X2[r], X2[t])
+							c23 = cos_sim(X2[k], X2[t])
+
+							X_ = np.concatenate([X2[r], X2[k], X2[t]])
+							y_ = np.asarray([d12, d13, d23])
+							y_cos_ = np.asarray([c12, c13, c23])
+
+							X_ = torch.from_numpy(X_).float()
+							y_ = torch.from_numpy(y_).float()
+							y_cos_ = torch.from_numpy(y_cos_).float()
+
+							# in your training loop:
+							optimizer.zero_grad()  # zero the gradient buffers
+							O = net(X_)
+							d12_O = dist2_tensor(O[:out_dim], O[out_dim:2*out_dim])
+							d13_O = dist2_tensor(O[:out_dim], O[2*out_dim:3 * out_dim])
+							d23_O = dist2_tensor(O[out_dim:2*out_dim], O[2*out_dim:3 * out_dim])
+
+							cos12_O = cos_sim_torch(O[:out_dim], O[out_dim:2 * out_dim])
+							cos13_O = cos_sim_torch(O[:out_dim], O[2 * out_dim:3 * out_dim])
+							cos23_O = cos_sim_torch(O[out_dim:2 * out_dim], O[2 * out_dim:3 * out_dim])
+
+							loss = (d12_O-y_[0]).pow(2).sum() + (d13_O-y_[1]).pow(2).sum() + (d23_O-y_[2]).pow(2).sum()
+							loss += 10* (cos12_O - y_cos_[0]).pow(2).sum() + (cos13_O - y_cos_[1]).pow(2).sum() + (cos23_O - y_cos_[2]).pow(
+								2).sum()
+
+							loss.backward()
+							optimizer.step()  # Does the update
+							losses.append(loss.item())
+							loss_ += loss.item()
 
 			print(f'{epoch + 1}/{n_epochs}, loss: {loss}')
 			history['loss'].append(loss.item())
@@ -243,40 +253,51 @@ def main():
 	nrows, ncols = 6, 7
 	fig, ax = plt.subplots(nrows, ncols, figsize=(25, 20))  # width, height
 	# fig = plt.figure(figsize=(15, 15))  # width, height
-	f = os.path.join('out', f'projection.png')
+	f = os.path.join('../out', f'projection.png')
 	check_path(os.path.dirname(f))
 	r = 0
 	for i in range(X.shape[0]):
 		print(f'Showing X_{i} ...')
 		if i >= nrows: break
-		X_, y_ = compute_Xy2(X[i, :], X)  # X1 and the rest data
-		# X_, y_ = compute_Xy2(X)  # X1 and the rest data
-		# X_, y_ = X_[:n, :], y_[:n]  # X1 to other points
-		X_, y_ = torch.from_numpy(X_).float(), torch.from_numpy(y_).float()
-		out = net(X_)
+		# X_, y_ = compute_Xy3(X[i, :], X[i+1, :], X)  # X1 and the rest data
+		# # X_, y_ = compute_Xy2(X)  # X1 and the rest data
+		# # X_, y_ = X_[:n, :], y_[:n]  # X1 to other points
+		out = []
+		for j in range(X.shape[0]):
+			x1, x2, x3 = X[0], X[1], X[j]
+			d12 = dist2(x1, x2)  # d12 == d21
+			d13 = dist2(x1, x3)  # d13 == d31
+			d23 = dist2(x2, x3)  # d23 == d32
+			X_ = np.concatenate([x1, x2, x3])
+			y_ = np.asarray([d12, d13, d23])
+			X_, y_ = torch.from_numpy(X_).float(), torch.from_numpy(y_).float()
+			out_ = net(X_)
+			out.append(out_.detach().numpy())
+		out = np.asarray(out)
+
 		# print(X[:20])
 		# print(out[:20])
 
 		r = i
 		c = 0
-		# original space
-		ax[r][c].scatter(X[:, 0], X[:, 1], c=y)
-		for i_ in range(X.shape[0]):
-			txt = f'{i_}:{X[i_]}'
-			ax[r][c].annotate(txt, (X[i_, 0], X[i_, 1]))
-		ax[r][c].set_title(f'Original X')
-		# plt.show()
-		c += 1
+		# # original space
+		# ax[r][c].scatter(X[:, 0], X[:, 1], c=y)
+		# for i_ in range(X.shape[0]):
+		# 	txt = f'{i_}:{X[i_]}'
+		# 	ax[r][c].annotate(txt, (X[i_, 0], X[i_, 1]))
+		# ax[r][c].set_title(f'Original X')
+		# # plt.show()
+		# c += 1
 
 		### Projected space
-		X1 = np.around(out[:, :out_dim].detach().numpy(), decimals=3)  # for all X1 projected data.
+		X1 = np.around(out[:, :out_dim], decimals=3)  # for all X1 projected data.
 		print(X1.shape, np.max(X1, axis=0) - np.min(X1, axis=0))
 		ax[r][c].scatter(X1[:, 0], X1[:, 1])
 		ax[r][c].set_title(f'Fixed X_{i}: the first two dimension\n{X[i, :]}->{X1[i, :]}')
 		# plt.show()
 		c += 1
 
-		X2 = out[:, out_dim:].detach().numpy()  # for the rest of projected data.
+		X2 = out[:, 2*out_dim:]  # for the rest of projected data.
 		print(X2.shape, np.max(X2, axis=0) - np.min(X2, axis=0))
 		ax[r][c].scatter(X2[:, 0], X2[:, 1], c=y)
 		# for i_ in range(X2.shape[0]):
@@ -286,46 +307,53 @@ def main():
 		# plt.show()
 		c += 1
 
-		X3 = out[:, out_dim - 1:out_dim + 1].detach().numpy()  # for the rest of projected data.
-		print(X3.shape, np.max(X3, axis=0) - np.min(X3, axis=0))
-		ax[r][c].scatter(X3[:, 0], X3[:, 1], c=y)
-		ax[r][c].set_title(f'Fixed X_{i}:the 2-3rd dimension')
-		c += 1
-
+		# X3 = out[:, out_dim - 1:out_dim + 1].detach().numpy()  # for the rest of projected data.
+		# print(X3.shape, np.max(X3, axis=0) - np.min(X3, axis=0))
+		# ax[r][c].scatter(X3[:, 0], X3[:, 1], c=y)
+		# ax[r][c].set_title(f'Fixed X_{i}:the 2-3rd dimension')
+		# c += 1
+		#
 		res = {'d1': [], 'd2': [], 'diff': [], 'y': [], 'cos1': [], 'cos2': []}
 		for i_, (v1, v2) in enumerate(zip(X, out)):
-			d1 = y_[i_].detach().numpy()
-			d2 = (out[i_, :out_dim] - out[i_, out_dim:]).pow(2).sum().detach().numpy()
-			diff = (np.square(d1 - d2))
-			cos1 = cos_sim(X[i, :], X[i_, :])
-			cos2 = cos_sim_torch(out[i_, :out_dim], out[i_, out_dim:]).detach().numpy()
-			if i_ < 20: print(v1, v2.detach().numpy(),
+			# d1 = y_[i_].detach().numpy()
+			# d2 = (out[i_, :out_dim] - out[i_, out_dim:]).pow(2).sum().detach().numpy()
+			# diff = (np.square(d1 - d2))
+			d1 =d2=diff = 0
+			cos12 = cos_sim(X[0, :], X[1, :])
+			cos13 = cos_sim(X[0, :], X[i_, :])
+			cos23 = cos_sim(X[1, :], X[i_, :])
+			# cos2 = cos_sim_torch(out[i_, :out_dim], out[i_, out_dim:]).detach().numpy()
+			cos12_O = cos_sim(out[0, :out_dim], out[1, out_dim:2*out_dim])
+			cos13_O = cos_sim(out[0, :out_dim], out[i_, 2*out_dim:])
+			cos23_O = cos_sim(out[1, out_dim:2*out_dim], out[i_, 2*out_dim:])
+			if i_ < 20: print(v1, v2,
 			                  'd1:', d1, 'd2:', d2, 'diff:', diff,
-			                  'cos1:', cos1, 'cos2:', cos2,
+			                  # 'cos1:', cos1, 'cos2:', cos2,
+			                  cos12, cos12_O, cos13, cos13_O, cos23, cos23_O,
 			                  y[i_])
 			res['d1'].append(d1)
 			res['d2'].append(d2)
 			res['diff'].append(diff)
-			res['cos1'].append(cos1)
-			res['cos2'].append(cos2)
+			# res['cos1'].append(cos1)
+			# res['cos2'].append(cos2)
 			res['y'].append(y[i_])
 
-		ax[r][c].plot(res['d1'], 'b*-', label='$d_1: dist(x_i-x_j)$')
-		ax[r][c].plot(res['d2'], 'go-', label="$d_2: dist(x_i^{'}-x_j^{'})$")
-		ax[r][c].legend()
-		ax[r][c].set_title('d1 and d2')
-		c += 1
+		# ax[r][c].plot(res['d1'], 'b*-', label='$d_1: dist(x_i-x_j)$')
+		# ax[r][c].plot(res['d2'], 'go-', label="$d_2: dist(x_i^{'}-x_j^{'})$")
+		# ax[r][c].legend()
+		# ax[r][c].set_title('d1 and d2')
+		# c += 1
 
-		ax[r][c].plot(res['diff'], 'rv-', label='$diff: dist(d_1-d_2)$')
-		ax[r][c].legend()
-		ax[r][c].set_title('diff')
-		c += 1
-
-		ax[r][c].plot(res['cos1'], 'b*-', label='$cos1: cos(x_i, x_j)$')
-		ax[r][c].plot(res['cos2'], 'go-', label="$cos2: cos(x_i^{'}, x_j^{'})$")
-		ax[r][c].legend()
-		ax[r][c].set_title('cosine similarity')
-		c += 1
+		# ax[r][c].plot(res['diff'], 'rv-', label='$diff: dist(d_1-d_2)$')
+		# ax[r][c].legend()
+		# ax[r][c].set_title('diff')
+		# c += 1
+		#
+		# ax[r][c].plot(res['cos1'], 'b*-', label='$cos1: cos(x_i, x_j)$')
+		# ax[r][c].plot(res['cos2'], 'go-', label="$cos2: cos(x_i^{'}, x_j^{'})$")
+		# ax[r][c].legend()
+		# ax[r][c].set_title('cosine similarity')
+		# c += 1
 
 	# fig.suptitle(title + fig_name + ', centroids update')
 	plt.tight_layout()

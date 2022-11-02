@@ -9,17 +9,13 @@ import random
 
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy
 import sklearn.metrics
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from scipy.spatial.distance import pdist, cdist
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 from torch.optim.lr_scheduler import ExponentialLR
-from umap import UMAP
 
 from datasets import gen_data
 from utils.common import check_path
@@ -36,7 +32,7 @@ class Net(nn.Module):
 	def __init__(self, in_dim, out_dim=2):
 		super(Net, self).__init__()
 		# an affine operation: y = Wx + b
-		dim = max(in_dim, out_dim * 8*2)
+		dim = max(in_dim//8, out_dim * 8*2)
 		self.fc1 = nn.Linear(in_dim, dim//4)
 		self.fc2 = nn.Linear(dim//4,dim//8)
 		self.fc20 = nn.Linear(dim//8, dim//8)
@@ -48,9 +44,8 @@ class Net(nn.Module):
 		# x = F.leaky_relu(self.fc20(x))
 		# x = F.leaky_relu(self.fc20(x))
 		# x = F.leaky_relu(self.fc20(x))
-		x = F.leaky_relu(self.fc20(x))
+		# x = F.leaky_relu(self.fc20(x))
 		# x = F.sigmoid(self.fc3(x))
-		# x = F.softmax(self.fc3(x))
 		x = self.fc3(x)
 		return x
 
@@ -144,58 +139,8 @@ def cos_sim_torch(x1, x2):
 
 
 def main():
-	out_dir = 'out'
-	data_name = '2gaussians'
-	data_name = '2circles'
-	# data_name = 's-curve'
-	# data_name = 'mnist'
-	# data_name = '5gaussians-5dims'
-	X_raw, y_raw = gen_data.gen_data(n=50, data_type=data_name, is_show=False, random_state=42)
-	# X_raw = np.asarray([[0,0], [1, 3], [2, 0], [-3, 3]])
-	# y_raw = np.asarray([0, 0, 1, 1])
+	X_raw, y_raw = gen_data.gen_data(n=100, data_type='moon1', is_show=False, random_state=42)
 	print(X_raw.shape, collections.Counter(y_raw))
-
-	# # first reduce the original data to lower space to fast the latter process.
-	# std = sklearn.preprocessing.StandardScaler()
-	# std.fit(X_raw)
-	# X_raw = std.transform(X_raw)
-	#
-	# pca = PCA(n_components=0.99, random_state=42)
-	# pca.fit(X_raw)
-	# print(pca.explained_variance_, pca.explained_variance_ratio_)
-	# X_raw = pca.transform(X_raw)
-	# print(X_raw.shape)
-	# #
-	# std = sklearn.preprocessing.StandardScaler()
-	# std.fit(X_raw)
-	# X_raw = std.transform(X_raw)
-
-	X, y = X_raw, y_raw
-	tsne = TSNE(perplexity=29, random_state=42)
-	# X_ = tsne.fit_transform(X)
-	#
-	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
-	# plt.title('TSNE X')
-	# plt.show()
-	#
-	# umap = UMAP(random_state=42)
-	# X_ = umap.fit_transform(X)
-	#
-	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
-	# plt.title('UMAP X')
-	# plt.show()
-	#
-	# pca = PCA(n_components=0.99, random_state=42)
-	# pca.fit(X)
-	# print(pca.explained_variance_, pca.explained_variance_ratio_)
-	#
-	# pca = PCA(n_components=2, random_state=42)
-	# X_ = pca.fit_transform(X)
-	#
-	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
-	# plt.title('PCA X')
-	# plt.show()
-	#
 
 	# for r in range(10):
 	# 	indices = (y_raw == r)
@@ -211,13 +156,10 @@ def main():
 	n, d = X_raw.shape
 	out_dim = 2
 	n_epochs = 200
-	model_file = f'net_ep_{n_epochs}-n5.pt'
+	model_file = f'net_ep_{n_epochs}-n4.pt'
 	if os.path.exists(model_file):
 		os.remove(model_file)
 
-	ds = pdist(X_raw)
-	d_u = np.max(ds)
-	print(f'd_u: {d_u}')
 	if not os.path.exists(model_file):
 		net = Net(in_dim=2 * d, out_dim=2 * out_dim)
 		print(net)
@@ -230,7 +172,7 @@ def main():
 		criterion = nn.MSELoss(reduction='sum')
 		# criterion = nn.CrossEntropyLoss()
 		scheduler = ExponentialLR(optimizer, gamma=0.9)
-		batch_size = 32
+		batch_size = 100
 		history = {'loss': []}
 		for epoch in range(n_epochs):
 			# shuffle X, y
@@ -240,54 +182,44 @@ def main():
 			losses = []
 			L = 0
 			seen = {}
-			seen_cos = {}
 			for i in range(0, n, batch_size):
-				X1 = X[i:i + batch_size, :]
-				# seen = {}
-				m = X1.shape[0]
-				seen = {}
-				for r in range(m):  # replace it with the nearest neighbours to fast the training.
+				X2 = X[i:i + batch_size, :]
+
+				for r in range(X2.shape[0]):  # replace it with the nearest neighbours to fast the training.
 					# X_, y_ = compute_Xy2(X2[r], X2)
-					n_samples = 5
-					replace = True if m < n_samples else False
-					X2 = sklearn.utils.resample(X1, replace=replace, n_samples=n_samples, random_state=r)
-					X_ = np.asarray([np.concatenate([X1[r], X2_]) for X2_ in X2])
+					X_ = np.asarray([np.concatenate([X2[r], X2[c]]) for c in range(X2.shape[0])])
 					y_cos_ = np.asarray(
-						[np.asarray(cos_sim(X1[r], X2_)) for X2_ in X2])  # cosine similarity: [-1, 1]
+						[np.asarray(cos_sim(X2[r], X2[c])) for c in range(X2.shape[0])])  # cosine similarity: [-1, 1]
 					# X_, y_ = torch.from_numpy(X_).float(), torch.from_numpy(y_).float()
 					X_ = torch.from_numpy(X_).float()
 					y_cos_ = torch.from_numpy(y_cos_).float()
+					# in your training loop:
 
 					optimizer.zero_grad()  # zero the gradient buffers
 					loss = 0
 
 					out = net(X_)
+					# out = (out[:, :out_dim] - out[:, out_dim:]).pow(2).sum(
+					# 	axis=1)/out_dim  # squared euclidean distance of X1 and X2
+					# out = (out[:, :out_dim] - out[:, out_dim:]).pow(2).sum(axis=1)
+					# d1 = dist2_tensor(out[:, :out_dim], out[:, out_dim:])
+					# loss = criterion(d1, y_)
+					# loss = (d1-y_).pow(2).sum()
+					# print(r, y_.shape, d1.shape)
+					# d2 = torch.cdist(out[:, :out_dim], out[r, out_dim:].reshape((1, out_dim))).sum()  # should be 0
+					# loss += d2
+					# d2 = torch.cdist(out[:, :out_dim], out[r, :out_dim].reshape((1, out_dim))).sum()  # should be 0
+					# loss += d2
+					# print(r, X2.shape[0])
+					ss1 = np.sum(np.exp(cdist(X2[r, :].reshape((1, -1)), X2)))
+					ss2 = torch.cdist(out[r, :out_dim].reshape((1, -1)), out[r, out_dim:].reshape((1, out_dim))).exp().sum()# should be 0
 
-					if tuple(X1[r]) not in seen:
-						# seen[tuple(X1[r])] = (out[r, :out_dim] + out[r, out_dim:]).detach().numpy() / 2
-						seen[tuple(X1[r])] = np.median(out[:, :out_dim].detach().numpy(), axis=0)
-						# seen[tuple(X1[r])] = np.mean(out[:, :out_dim].detach().numpy(), axis=0)
-						# seen[tuple(X1[r])] = out[0, out_dim:].detach().numpy()
-						seen_cos[tuple(X1[r])] = 0
-					# else:
-					# 	continue
 					alpha = 1
-					# loss = cdist(X1[r, :].reshape((1, -1)), X2)
-					loss = 0
-
-					ss1 = np.sum((cdist(X1[r, :].reshape((1, -1)), X2)))
-					ss2 = torch.cdist(torch.from_numpy(np.mean(out[:, :out_dim].detach().numpy(), axis=0).reshape((1, -1))),
-					                  out[:, out_dim:]).sum()  # should be 0
-
-					for c, X2_ in enumerate(X2):
-						if tuple(X2[c]) not in seen:
-							seen[tuple(X2[c])] = out[c, out_dim:].detach().numpy()
-						# else:
-						# 	continue
-						# y_cos2_ = cos_sim_torch(out[r, :out_dim], out[c, out_dim:])
-						# loss += alpha * (torch.exp((y_cos2_ - y_cos_[c]).abs().sum())-1).abs()
-						# cos2_ = cos_sim_torch(out[r, :out_dim], out[c, :out_dim])  # itself
-						# loss += alpha * (torch.exp((cos2_ - 1).abs().sum())-1).abs()
+					for c in range(X2.shape[0]):
+						y_cos2_ = cos_sim_torch(out[r, :out_dim], out[c, out_dim:])
+						loss += alpha * (torch.exp((y_cos2_ - y_cos_[c]).abs().sum())-1).abs()
+						cos2_ = cos_sim_torch(out[r, :out_dim], out[c, :out_dim])  # itself
+						loss += alpha * (torch.exp((cos2_ - 1).abs().sum())-1).abs()
 
 						# d1 = np.square(X2[r]-X2[c])
 						# l1 = max(np.linalg.norm(d1), 1e-5)
@@ -296,30 +228,8 @@ def main():
 						# l1 = l2 = 1
 						# loss += (np.sum(d1)/l1 - d2.sum()/l2).pow(2).sum()
 
-						# if tuple(X2[c]) in seen:   # x to out
-						# 	d1 = np.square(X2[r] - X2[c])
-						# 	d2 = (torch.from_numpy(seen[tuple(X2[r])]) - out[c, out_dim:]).pow(2)
-						# 	loss += d2.sum()
-						# 	beta = 1
-						# 	# loss += (torch.exp((np.sum(d1) - beta * torch.sum(d2)).pow(2).sum())-1).abs()
-						# 	loss += (np.sum(d1) - beta * torch.sum(d2)).pow(2).sum()
-						#
-						# 	d3 = (torch.from_numpy(seen[tuple(X2[c])]) - out[c, :out_dim]).pow(2)
-						# 	loss += d3.sum()
-						#
-						# 	# y_cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X2[r])]), out[c, out_dim:])
-						# 	# loss += alpha * (torch.exp((y_cos2_ - y_cos_[c]).abs().sum()) - 1).abs()
-						# 	# cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X2[r])]), out[c, :out_dim])  # itself
-						# 	# loss += alpha * (torch.exp((cos2_ - 1).abs().sum()) - 1).abs()
-						# else:
-
-						y_cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X1[r])]), out[c, out_dim:])
-						loss += alpha * (y_cos2_ - y_cos_[c]).pow(2).sum()
-						cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X1[r])]), out[c, :out_dim])  # itself
-						loss += alpha * (cos2_ - 1).pow(2).sum()
-
-						d1 = np.square(X1[r] - X2[c])
-						d2 = (torch.from_numpy(seen[tuple(X1[r])]) - out[c, out_dim:]).pow(2)
+						d1 = np.abs(X2[r] - X2[c])
+						d2 = (out[r, :out_dim] - out[c, out_dim:]).abs()
 						# loss += (np.max(d1) - torch.max(d2)).pow(2).sum()  # max difference
 						# loss += (np.sum(d1) - torch.sum(d2)).abs() # sum difference
 						# loss += (out[r, :out_dim] - out[c, :out_dim]).abs().sum()
@@ -327,22 +237,12 @@ def main():
 						# d2 = torch.exp(-d2.sum())
 						# loss += d1 * torch.log(d1/d2) + (1-d1)*torch.log((1-d1)/(1-d2)+1e-5)  # cross entropy
 						beta = 1
-						loss += (((np.sum(d1) - beta * torch.sum(d2)).pow(2).sum())).pow(2)
-						# loss += (np.sum(d1)/ss1 - beta * torch.sum(d2)/ss2).pow(2).sum()* np.square(d_u)/(np.sum(d1)+1e-5)   #* (np.sum(d1)-d_u**2)**2  # the smaller d1, the more importance d1-d2
-						# loss += scipy.special.kl_div(np.sum(d1)/ss1, torch.sum(d2)/ss2)
-						# a = np.sum(d1)/ss1
-						# b = torch.sum(d2)/ss2
-						# loss += a * torch.log(a/(b+1e-5) + 1e-5).abs()
-						# print(a, b, loss)
+						loss += (torch.exp((np.sum(d1) - beta * torch.sum(d2)).pow(2).sum())-1).abs()
 						# (2, 4)/6 == (1, 2)/3, so dividing ss1 (6, 3) only maintain the ratio, not the distance in original space.
 						# loss += (torch.exp((np.sum(d1) / ss1 - beta * torch.sum(d2) / ss2).pow(2).sum()) - 1).abs()
-						d3 = (torch.from_numpy(seen[tuple(X1[r])]) - out[c, :out_dim]).pow(2)   #/n_samples
-						loss += d3.sum() #* (np.sum(d1)-d_u**2)**2
+						d3 = (out[r, out_dim:] - out[c, :out_dim]).abs()
+						loss += (torch.exp(d3.sum())-1).abs()
 
-						# seen[tuple(X2[r])] = (out[r, :out_dim] +  out[r, out_dim:])/2
-
-						# seen_cos[tuple[X2[c]]] =
-						# print(loss, loss.shape)
 					# d3 = (out[r, :out_dim]-out[r, out_dim:]).pow(2).sum()   # dist(X1', X1') # the distance of itself.
 					# loss += d3
 					# print((d1-y_).abs()[:batch_size])
@@ -402,7 +302,7 @@ def main():
 	nrows, ncols = 6, 7
 	fig, ax = plt.subplots(nrows, ncols, figsize=(25, 20))  # width, height
 	# fig = plt.figure(figsize=(15, 15))  # width, height
-	f = os.path.join('out', f'projection.png')
+	f = os.path.join('../out', f'projection.png')
 	check_path(os.path.dirname(f))
 	r = 0
 	X_res = []
@@ -441,7 +341,7 @@ def main():
 		# plt.show()
 		c += 1
 
-		X2 = out[:, out_dim:].detach().numpy()
+		X2 = out[:, out_dim:].detach().numpy()  # for the rest of projected data.
 		print(X2.shape, np.max(X2, axis=0) - np.min(X2, axis=0))
 		ax[r][c].scatter(X2[:, 0], X2[:, 1], c=y)
 		# for i_ in range(X2.shape[0]):
