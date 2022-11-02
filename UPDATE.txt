@@ -1,3 +1,13 @@
+V0.0.4-1: Add single neural network
+
+1. add single neural network with different attempts.
+2. add anim.py
+
+
+1. Implement perplexity to compute sigma for KL
+2. Add 5 and 10 clusters with random centroids in 5 dimensions
+
+
 V0.0.3-4: Add perplexity for KL
 
 1. Implement perplexity to compute sigma for KL

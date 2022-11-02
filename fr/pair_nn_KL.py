@@ -18,6 +18,7 @@ import torch.optim as optim
 from scipy.spatial.distance import pdist, cdist
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from sklearn.neighbors import NearestNeighbors
 from torch.optim.lr_scheduler import ExponentialLR
 from umap import UMAP
 
@@ -48,7 +49,7 @@ class Net(nn.Module):
 		# x = F.leaky_relu(self.fc20(x))
 		# x = F.leaky_relu(self.fc20(x))
 		# x = F.leaky_relu(self.fc20(x))
-		# x = F.leaky_relu(self.fc20(x))
+		x = F.leaky_relu(self.fc20(x))
 		# x = F.sigmoid(self.fc3(x))
 		# x = F.softmax(self.fc3(x))
 		x = self.fc3(x)
@@ -108,7 +109,7 @@ def compute_Xy2(X1, X):
 
 
 def dist2_tensor(X1, X2):
-	return (X1 - X2).pow(2).sum(axis=1)
+	return (X1 - X2).pow(2).sum()
 
 
 # return (X1 - X2).abs().sum(axis=1)
@@ -143,6 +144,54 @@ def cos_sim_torch(x1, x2):
 	return torch.dot(x1, x2) / (torch.norm(x1) * torch.norm(x2))
 
 
+def t_distribution_torch(x1, x2):
+	return 1 / (1 + (x1 - x2).pow(2).sum())
+
+
+def gaussian_torch(x1, x2, sigma=1):
+	return torch.exp(-(x1 - x2).pow(2).sum() / (2 * sigma ** 2))
+
+
+def compute_y_kl(X, net):
+	N, d = X.shape
+	sum_y_kl = 0
+	for k in range(N):
+		for l in range(N):
+			if l == k: continue
+			pair = np.concatenate([X[k], X[l]], axis=0)
+			y_ = net(torch.from_numpy(pair))
+			sum_y_kl += t_distribution_torch(y_[:2], y_[2:]).detach().numpy().item()
+	return sum_y_kl
+
+
+def compute_x_kl(X, sigma=1):
+	N, d = X.shape
+	sum_x_kl = 0
+	for k in range(N):
+		X_k = X[k]
+		for l in range(N):
+			if l == k: continue
+			X_l = X[l]
+			sum_x_kl += gaussian_torch(X_k, X_l, sigma).detach().numpy().item()
+	return sum_x_kl
+
+
+def compute_ds(X):
+	N, d = X.shape
+	ds = []
+	for k in range(N):
+		X_k = X[k]
+		for l in range(N):
+			if l == k: continue
+			X_l = X[l]
+			ds.append(np.sqrt(np.sum(np.square(X_k-X_l))))
+	return ds
+
+
+
+
+
+
 def main():
 	out_dir = 'out'
 	data_name = '2gaussians'
@@ -150,13 +199,28 @@ def main():
 	# data_name = 's-curve'
 	# data_name = 'mnist'
 	# data_name = '5gaussians-5dims'
-	X_raw, y_raw = gen_data.gen_data(n=16, data_type=data_name, is_show=False, random_state=42)
+	X_raw, y_raw = gen_data.gen_data(n=15, data_type=data_name, is_show=False, random_state=42)
 	# X_raw = np.asarray([[0,0], [1, 3], [2, 0], [-3, 3]])
 	# y_raw = np.asarray([0, 0, 1, 1])
 	print(X_raw.shape, collections.Counter(y_raw))
 
+	# # first reduce the original data to lower space to fast the latter process.
+	# std = sklearn.preprocessing.StandardScaler()
+	# std.fit(X_raw)
+	# X_raw = std.transform(X_raw)
+	#
+	# pca = PCA(n_components=0.99, random_state=42)
+	# pca.fit(X_raw)
+	# print(pca.explained_variance_, pca.explained_variance_ratio_)
+	# X_raw = pca.transform(X_raw)
+	# print(X_raw.shape)
+	# #
+	# std = sklearn.preprocessing.StandardScaler()
+	# std.fit(X_raw)
+	# X_raw = std.transform(X_raw)
+
 	# X, y = X_raw, y_raw
-	# tsne = TSNE(random_state=42)
+	# tsne = TSNE(perplexity=29, random_state=42)
 	# X_ = tsne.fit_transform(X)
 	#
 	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
@@ -180,7 +244,7 @@ def main():
 	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
 	# plt.title('PCA X')
 	# plt.show()
-
+	#
 
 	# for r in range(10):
 	# 	indices = (y_raw == r)
@@ -192,10 +256,11 @@ def main():
 	# 		x2 = X_raw[y_raw==c]
 	# 		d = cdist(x, x2)
 	# 		print(r, c, np.quantile(d, q=[0, 0.3, 0.5, 0.7, 1.0]))
-	#
+
 	n, d = X_raw.shape
 	out_dim = 2
-	n_epochs = 200
+	in_dim = d
+	n_epochs = 50
 	model_file = f'out/net_ep_{n_epochs}-n5.pt'
 	if os.path.exists(model_file):
 		os.remove(model_file)
@@ -204,7 +269,7 @@ def main():
 	d_u = np.max(ds)
 	print(f'd_u: {d_u}')
 	if not os.path.exists(model_file):
-		net = Net(in_dim=2 * d, out_dim=2 * out_dim)
+		net = Net(in_dim=2 * in_dim, out_dim=2 * out_dim)
 		print(net)
 		params = list(net.parameters())
 		print(len(params))
@@ -215,133 +280,112 @@ def main():
 		criterion = nn.MSELoss(reduction='sum')
 		# criterion = nn.CrossEntropyLoss()
 		scheduler = ExponentialLR(optimizer, gamma=0.9)
-		batch_size = 32
+		n_neighbors = 3
+		# Find the nearest neighbors for every point
+		knn = NearestNeighbors(
+			algorithm="auto",
+			n_neighbors=n_neighbors,
+		)
+		knn.fit(X_raw)
+		# distances_nn = knn.kneighbors_graph(mode="distance")
+		# sigmas = {}
+		# sum_x = {}
+
 		history = {'loss': []}
 		for epoch in range(n_epochs):
 			# shuffle X, y
 			X, y = copy.deepcopy(X_raw), copy.deepcopy(y_raw)
-			n, d = X.shape
+			N, d = X.shape
 			X, y = sklearn.utils.shuffle(X, y, random_state=epoch)
 			losses = []
 			L = 0
-			# seen = {}
-			# seen_cos = {}
-			for i in range(0, n, batch_size):
-				X1 = X[i:i + batch_size, :]
-				# seen = {}
-				m = X1.shape[0]
-				seen = {}
-				for r in range(m):  # replace it with the nearest neighbours to fast the training.
-					# X_, y_ = compute_Xy2(X2[r], X2)
-					n_samples = 5
-					replace = True if m < n_samples else False
-					X2 = sklearn.utils.resample(X1, replace=replace, n_samples=n_samples, random_state=r)
-					X_ = np.asarray([np.concatenate([X1[r], X2_]) for X2_ in X2])
-					y_cos_ = np.asarray(
-						[np.asarray(cos_sim(X1[r], X2_)) for X2_ in X2])  # cosine similarity: [-1, 1]
-					# X_, y_ = torch.from_numpy(X_).float(), torch.from_numpy(y_).float()
-					X_ = torch.from_numpy(X_).float()
-					y_cos_ = torch.from_numpy(y_cos_).float()
+			seen_cos = {}
+			batch_size = n
+			seen = {}
+			X1 = X
+			# optimizer.zero_grad()  # zero the gradient buffers
+			# loss = 0
+			ds1 = compute_ds(X)
+			sigma = np.quantile(ds1, q=0.25)
+			s1 = compute_x_kl(torch.from_numpy(X).float(), sigma)
+			s2 = compute_y_kl(torch.from_numpy(X).float(), net)
+			# print(epoch, sigma, s1, s2)
+			optimizer.zero_grad()  # zero the gradient buffers
+			loss = 0
 
-					optimizer.zero_grad()  # zero the gradient buffers
-					loss = 0
+			for i in range(N):  # for each x_r, find its neighbours: n_samples
+				# X_, y_ = compute_Xy2(X2[r], X2)
+				n_samples = N
+				# replace = True if N < n_samples else False
+				# X2 = sklearn.utils.resample(X1, replace=replace, n_samples=n_samples, random_state=r)
+				indices = knn.kneighbors(X[i].reshape(1, -1), n_neighbors=n_samples, return_distance=False)[0]
+				# # indices = knn.radius_neighbors(X[i].detach().numpy().reshape(1, -1), radius=10.0, return_distance=False)[0]
+				# X2 = torch.from_numpy(X[indices]).float()
+				X2 = X[indices]
+				# if len(X2) < 2: continue
+				X_ = np.asarray([np.concatenate([X1[i], X2_]) for X2_ in X2])
+				y_cos_ = np.asarray([np.asarray(cos_sim(X1[i], X2_)) for X2_ in X2])  # cosine similarity: [-1, 1]
+				# X_, y_ = torch.from_numpy(X_).float(), torch.from_numpy(y_).float()
+				X_ = torch.from_numpy(X_).float()
+				# y_cos_ = torch.from_numpy(y_cos_).float()
 
-					out = net(X_)
+				O = net(X_)
 
-					if tuple(X1[r]) not in seen:
-						# seen[tuple(X1[r])] = (out[r, :out_dim] + out[r, out_dim:]).detach().numpy() / 2
-						seen[tuple(X1[r])] = np.median(out[:, :out_dim].detach().numpy(), axis=0)
-						# seen[tuple(X1[r])] = np.mean(out[:, :out_dim].detach().numpy(), axis=0)
-						# seen[tuple(X1[r])] = out[r, out_dim:].detach().numpy()
-						# seen_cos[tuple(X1[r])] = 0
-					# else:
-					# 	continue
-					alpha = 1
-					# ss1 = np.sum((cdist(X1[r, :].reshape((1, -1)), X2)))
-					# ss2 = torch.cdist(torch.from_numpy(np.mean(out[:, :out_dim].detach().numpy(), axis=0).reshape((1, -1))),
-					#                   out[:, out_dim:]).sum()  # should be 0
+				# sum_p_ji = 0
+				ds_tmp = [dist2_tensor(torch.from_numpy(X[i]), torch.from_numpy(X[j])).detach().numpy().item() for j in range(N) if i != j]
+				n_neighbors = 3
+				q = n_neighbors / (N - 1)
+				sigma_i = np.quantile(ds_tmp, q) / np.sqrt(2)
+				sum_x_i = np.sum([gaussian_torch(torch.from_numpy(X[i]), torch.from_numpy(X[j]), sigma_i).detach().numpy().item()
+				                  for j in range(N) if i != j])
+				# # sum_x_i = np.sum([t_distribution_torch(X[i], X[j]).detach().numpy().item()
+				# #                   for j in range(N) if i != j])
+				sum_y_i = 0
+				for j in range(N):
+					X_ij = torch.from_numpy(np.concatenate([X[i], X[j]])).float()
+					y_ij = net(X_ij).detach()
+					sum_y_i += t_distribution_torch(y_ij[:out_dim], y_ij[out_dim:]).numpy().item()
 
-					for c, X2_ in enumerate(X2):
-						if tuple(X2[c]) not in seen:
-							seen[tuple(X2[c])] = out[c, out_dim:].detach().numpy()
-						# else:
-						# 	continue
-						# y_cos2_ = cos_sim_torch(out[r, :out_dim], out[c, out_dim:])
-						# loss += alpha * (torch.exp((y_cos2_ - y_cos_[c]).abs().sum())-1).abs()
-						# cos2_ = cos_sim_torch(out[r, :out_dim], out[c, :out_dim])  # itself
-						# loss += alpha * (torch.exp((cos2_ - 1).abs().sum())-1).abs()
+				for j, X_ij in enumerate(X_):
+					# d1 = np.square(X1[r] - X2[c])
+					# d2 = (torch.from_numpy(seen[tuple(X1[r])]) - out[c, out_dim:]).pow(2)
 
-						# d1 = np.square(X2[r]-X2[c])
-						# l1 = max(np.linalg.norm(d1), 1e-5)
-						# d2 = (out[r, :out_dim] - out[c, out_dim:]).pow(2)
-						# l2 = max(torch.norm(d2), 1e-5)
-						# l1 = l2 = 1
-						# loss += (np.sum(d1)/l1 - d2.sum()/l2).pow(2).sum()
+					p_ij = gaussian_torch(X_ij[:in_dim], X_ij[in_dim:], sigma_i) / sum_x_i
+					# p_ij = gaussian_torch(X_ij[:in_dim], X_ij[in_dim:], sigma) / s1
+					# p_ij = t_distribution_torch(X[i], X_j) / sum_x_i
 
-						# if tuple(X2[c]) in seen:   # x to out
-						# 	d1 = np.square(X2[r] - X2[c])
-						# 	d2 = (torch.from_numpy(seen[tuple(X2[r])]) - out[c, out_dim:]).pow(2)
-						# 	loss += d2.sum()
-						# 	beta = 1
-						# 	# loss += (torch.exp((np.sum(d1) - beta * torch.sum(d2)).pow(2).sum())-1).abs()
-						# 	loss += (np.sum(d1) - beta * torch.sum(d2)).pow(2).sum()
-						#
-						# 	d3 = (torch.from_numpy(seen[tuple(X2[c])]) - out[c, :out_dim]).pow(2)
-						# 	loss += d3.sum()
-						#
-						# 	# y_cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X2[r])]), out[c, out_dim:])
-						# 	# loss += alpha * (torch.exp((y_cos2_ - y_cos_[c]).abs().sum()) - 1).abs()
-						# 	# cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X2[r])]), out[c, :out_dim])  # itself
-						# 	# loss += alpha * (torch.exp((cos2_ - 1).abs().sum()) - 1).abs()
-						# else:
+					# q_ij = t_distribution_torch(y_i, y_j) / sum_y_ij
+					q_ij = t_distribution_torch(O[j][:out_dim], O[j][out_dim:]) / sum_y_i
+					# p_ij = torch.clamp(p_ij, min=1e-10)
+					# q_ij = torch.clamp(q_ij, min= 1e-10)
 
-						y_cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X1[r])]), out[c, out_dim:])
-						loss += alpha * (y_cos2_ - y_cos_[c]).pow(2).sum()
-						cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X1[r])]), out[c, :out_dim])  # itself
-						loss += alpha * (cos2_ - 1).pow(2).sum()
+					# w_ij = 1
+					w_ij = p_ij
+					# w_ij = torch.clamp(p_ij, min=1e-10, max=1)
+					# w_ij = 1/p_ij**2
+					loss += (w_ij * torch.log2(torch.clamp(p_ij / q_ij, min=1e-10, max=1e+10)).abs())
+					# loss += ((p_ij / q_ij -1).square())
+					# loss += w_ij*(p_ij - q_ij).abs()
+					# print(loss, w_ij, p_ij, q_ij, torch.log2(p_ij / q_ij),)
+					# ds.append((p_ij.detach().numpy().item(), q_ij.detach().numpy().item()))
 
-						d1 = np.square(X1[r] - X2[c])
-						d2 = (torch.from_numpy(seen[tuple(X1[r])]) - out[c, out_dim:]).pow(2)
-						# loss += (np.max(d1) - torch.max(d2)).pow(2).sum()  # max difference
-						loss += (np.sum(d1) - torch.sum(d2)).pow(2).sum() # sum difference
+					# cos1_ = cos_sim_torch(X_ij[:in_dim], X_ij[in_dim:])
+					# cos2_ = cos_sim_torch(O[j][:out_dim], O[j][out_dim:])
+					# loss += (cos1_-cos2_).pow(2)        # cosine similarity
 
-						# loss += (out[r, :out_dim] - out[c, :out_dim]).abs().sum()
-						# d1 = np.exp(-np.sum(d1))
-						# d2 =  1/ (1+ (torch.from_numpy(seen[tuple(X1[r])]) - out[c, out_dim:]).pow(2)) # t-distribution
-						# d2 = d2.sum().abs()
-						# loss += d1 * torch.log(d1/(d2+1e-5)).abs()
-						# loss += d1 * torch.log(d1/d2) + (1-d1)*torch.log((1-d1)/(1-d2)+1e-5)  # cross entropy
-						# beta = 1
-						# loss += (((np.sum(d1) - beta * torch.sum(d2)).pow(2).sum())).pow(2)
-						# loss += (np.sum(d1)/ss1 - beta * torch.sum(d2)/ss2).pow(2).sum()* np.square(d_u)/(np.sum(d1)+1e-5)   #* (np.sum(d1)-d_u**2)**2  # the smaller d1, the more importance d1-d2
-						# loss += scipy.special.kl_div(np.sum(d1)/ss1, torch.sum(d2)/ss2)
-						# a = np.sum(d1)/ss1
-						# b = torch.sum(d2)/ss2
-						# loss += a * torch.log(a/(b+1e-5) + 1e-5).abs()
-						# print(a, b, loss)
-						# (2, 4)/6 == (1, 2)/3, so dividing ss1 (6, 3) only maintain the ratio, not the distance in original space.
-						# loss += (torch.exp((np.sum(d1) / ss1 - beta * torch.sum(d2) / ss2).pow(2).sum()) - 1).abs()
+					if j > 0:
+						loss += (O[0][:out_dim] - O[j][:out_dim]).pow(2).sum()  # itself.
 
-						d3 = (torch.from_numpy(seen[tuple(X1[r])]) - out[c, :out_dim]).pow(2)   #/n_samples
-						loss += d3.sum() #* (np.sum(d1)-d_u**2)**2
-
-						# seen[tuple(X2[r])] = (out[r, :out_dim] +  out[r, out_dim:])/2
-
-						# seen_cos[tuple[X2[c]]] =
-						# print(loss, loss.shape)
-					# d3 = (out[r, :out_dim]-out[r, out_dim:]).pow(2).sum()   # dist(X1', X1') # the distance of itself.
-					# loss += d3
-					# print((d1-y_).abs()[:batch_size])
-
-					loss.backward()
-					optimizer.step()  # Does the update
-					losses.append(loss.item())
-					L += loss.item()
+			loss.backward()
+			optimizer.step()  # Does the update
+			losses.append(loss.item())
+			L += loss.item()
 			print(f'{epoch + 1}/{n_epochs}, loss: {L}')
 			history['loss'].append(L)
-		if epoch % 50==0:
-			print(scheduler.get_lr())
-			scheduler.step()  # adjust learning rate
+
+			if epoch % 50==0:
+				print(scheduler.get_lr())
+				scheduler.step()  # adjust learning rate
 
 		plt.plot(history['loss'])
 		plt.ylabel('loss')

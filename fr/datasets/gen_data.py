@@ -24,7 +24,7 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 	n_samples = n
 
 	if data_type == 's-curve':
-		S_points, S_color = datasets.make_s_curve(n_samples, random_state=random_state)
+		S_points, S_color = datasets.make_s_curve(n_samples*2, random_state=random_state)
 		X, y = S_points, S_color
 		plot_3d(S_points, S_color, title='manifold 3d')
 	elif data_type == 'moon':
@@ -92,7 +92,7 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 				y = np.concatenate([y, y1], axis=0)
 
 	else:
-		X, y = datasets.make_circles(n_samples=n_samples, factor=0.5, noise=0.05, random_state=random_state)
+		X, y = datasets.make_circles(n_samples=n_samples*2, factor=0.5, noise=0.05, random_state=random_state)
 		if with_noise:
 			n_noise_samples = int(n_samples * 0.01)
 			rng = np.random.RandomState(seed=random_state)

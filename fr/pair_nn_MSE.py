@@ -50,8 +50,8 @@ class Net(nn.Module):
 		# x = F.leaky_relu(self.fc20(x))
 		x = F.leaky_relu(self.fc20(x))
 		# x = F.sigmoid(self.fc3(x))
-		x = F.softmax(self.fc3(x))
-		# x = self.fc3(x)
+		# x = F.softmax(self.fc3(x))
+		x = self.fc3(x)
 		return x
 
 
@@ -144,11 +144,34 @@ def cos_sim_torch(x1, x2):
 
 
 def main():
-	X_raw, y_raw = gen_data.gen_data(n=100, data_type='2gaussians', is_show=False, random_state=42)
+	out_dir = 'out'
+	data_name = '2gaussians'
+	data_name = '2circles'
+	# data_name = 's-curve'
+	# data_name = 'mnist'
+	# data_name = '5gaussians-5dims'
+	X_raw, y_raw = gen_data.gen_data(n=50, data_type=data_name, is_show=False, random_state=42)
+	# X_raw = np.asarray([[0,0], [1, 3], [2, 0], [-3, 3]])
+	# y_raw = np.asarray([0, 0, 1, 1])
 	print(X_raw.shape, collections.Counter(y_raw))
 
-	# X, y = X_raw, y_raw
-	# tsne = TSNE(random_state=42)
+	# # first reduce the original data to lower space to fast the latter process.
+	# std = sklearn.preprocessing.StandardScaler()
+	# std.fit(X_raw)
+	# X_raw = std.transform(X_raw)
+	#
+	# pca = PCA(n_components=0.99, random_state=42)
+	# pca.fit(X_raw)
+	# print(pca.explained_variance_, pca.explained_variance_ratio_)
+	# X_raw = pca.transform(X_raw)
+	# print(X_raw.shape)
+	# #
+	# std = sklearn.preprocessing.StandardScaler()
+	# std.fit(X_raw)
+	# X_raw = std.transform(X_raw)
+
+	X, y = X_raw, y_raw
+	tsne = TSNE(perplexity=29, random_state=42)
 	# X_ = tsne.fit_transform(X)
 	#
 	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
@@ -172,7 +195,7 @@ def main():
 	# plt.scatter(X_[:, 0], X_[:, 1], c=y)
 	# plt.title('PCA X')
 	# plt.show()
-
+	#
 
 	# for r in range(10):
 	# 	indices = (y_raw == r)
@@ -225,7 +248,7 @@ def main():
 				seen = {}
 				for r in range(m):  # replace it with the nearest neighbours to fast the training.
 					# X_, y_ = compute_Xy2(X2[r], X2)
-					n_samples = 10
+					n_samples = 5
 					replace = True if m < n_samples else False
 					X2 = sklearn.utils.resample(X1, replace=replace, n_samples=n_samples, random_state=r)
 					X_ = np.asarray([np.concatenate([X1[r], X2_]) for X2_ in X2])
@@ -241,15 +264,16 @@ def main():
 					out = net(X_)
 
 					if tuple(X1[r]) not in seen:
-						# seen[tuple(X2[r])] = (out[r, :out_dim] + out[r, out_dim:]).detach().numpy() / 2
-						# seen[tuple(X2[r])] = np.median(out[:, :out_dim].detach().numpy(), axis=0)
+						# seen[tuple(X1[r])] = (out[r, :out_dim] + out[r, out_dim:]).detach().numpy() / 2
+						seen[tuple(X1[r])] = np.median(out[:, :out_dim].detach().numpy(), axis=0)
 						# seen[tuple(X1[r])] = np.mean(out[:, :out_dim].detach().numpy(), axis=0)
-						seen[tuple(X1[r])] = out[r, out_dim:].detach().numpy()
+						# seen[tuple(X1[r])] = out[0, out_dim:].detach().numpy()
 						seen_cos[tuple(X1[r])] = 0
 					# else:
 					# 	continue
 					alpha = 1
-					loss = cdist(X1[r, :].reshape((1, -1)), X2)
+					# loss = cdist(X1[r, :].reshape((1, -1)), X2)
+					loss = 0
 
 					ss1 = np.sum((cdist(X1[r, :].reshape((1, -1)), X2)))
 					ss2 = torch.cdist(torch.from_numpy(np.mean(out[:, :out_dim].detach().numpy(), axis=0).reshape((1, -1))),
@@ -289,10 +313,11 @@ def main():
 						# 	# loss += alpha * (torch.exp((cos2_ - 1).abs().sum()) - 1).abs()
 						# else:
 
-						# y_cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X1[r])]), out[c, out_dim:])
-						# loss += alpha * (y_cos2_ - y_cos_[c]).pow(2).sum()
-						# cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X2[r])]), out[c, :out_dim])  # itself
-						# loss += alpha * (cos2_ - 1).pow(2).sum()
+						y_cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X1[r])]), out[c, out_dim:])
+						loss += alpha * (y_cos2_ - y_cos_[c]).pow(2).sum()
+						cos2_ = cos_sim_torch(torch.from_numpy(seen[tuple(X1[r])]), out[c, :out_dim])  # itself
+						loss += alpha * (cos2_ - 1).pow(2).sum()
+
 						d1 = np.square(X1[r] - X2[c])
 						d2 = (torch.from_numpy(seen[tuple(X1[r])]) - out[c, out_dim:]).pow(2)
 						# loss += (np.max(d1) - torch.max(d2)).pow(2).sum()  # max difference
