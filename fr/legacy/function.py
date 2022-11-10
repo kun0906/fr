@@ -1,7 +1,56 @@
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 
+# Fixing random state for reproducibility
+np.random.seed(19680801)
 
+for i in range(5):
+	fig, ax = plt.subplots(2, 2, figsize=(10, 5), dpi=600)  # width, height
+	print(f'i: {i}, figure number: {plt.gcf().number}, {fig.number}')
+	# plt.close()
 
+# https://stackoverflow.com/questions/52108558/how-does-parameters-c-and-cmap-behave-in-a-matplotlib-scatter-plot
+N =100
+x = [i for i in range(N)]
+y = [1 for i in range(N)]
+cmap = plt.get_cmap() # default colormap: viridis
+norm = matplotlib.colors.Normalize(vmin=min(x), vmax=max(x))
+colors = cmap(norm(x), bytes=False)   # RGBA
+plt.scatter(x, y, c=colors)
 
+y = [3 for i in range(N)]
+cmap = plt.get_cmap(name='rainbow')
+norm = matplotlib.colors.Normalize(vmin=min(x), vmax=max(x))
+colors = cmap(norm(x), bytes=False)   # RGBA
+plt.scatter(x, y, c=colors)
+
+plt.show()
+
+#
+# N = 100
+# r0 = 0.6
+# x = 0.9 * np.random.rand(N)
+# y = 0.9 * np.random.rand(N)
+# area = (20 * np.random.rand(N))**2  # 0 to 10 point radii
+# c = np.sqrt(area)
+# r = np.sqrt(x ** 2 + y ** 2)
+# area1 = np.ma.masked_where(r < r0, area)
+# area2 = np.ma.masked_where(r >= r0, area)
+# # plt.scatter(x, y, s=area1)
+# cmap = plt.get_cmap(name='rainbow')
+# norm = matplotlib.colors.Normalize(vmin=min(y), vmax=max(y))
+# colors = cmap(norm(y), bytes=False)   # RGBA
+# plt.scatter(x, y, s=area1, marker='^', c=colors)
+# # plt.scatter(x, y, s=area2, marker='o', c=c)
+# # Show the boundary between the regions:
+# theta = np.arange(0, np.pi / 2, 0.01)
+# plt.plot(r0 * np.cos(theta), r0 * np.sin(theta))
+#
+# plt.show()
+#
+#
+#
 
 # import matplotlib.pyplot as plt
 # import numpy as np

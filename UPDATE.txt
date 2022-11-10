@@ -1,10 +1,37 @@
+V0.0.5-6-2: Recompute P for every update from scratch without updating distance accumulatively.
+
+1. recompute P for every update from scratch without updating distance accumulatively.
+
+
+V0.0.5-6:
+
+1. Update the way to compute n_init_iter and n_update_iters to make the total number of iterations equals to n_iters.
+    E.g., changing np.ceil() to np.round() and n_update_iters
+2. Increase the number of batches to use is_recompute_P during the update phase.
+    is_recompute_P: if we recompute P matrix from scratch.
+3. Add plt.close() to release memory and obtain fig.number
+    E.g., print(f'figure number: {plt.gcf().number}, {fig.number}')
+
+
+
+V0.0.5-5: Plot the result for each iteration.
+
+1. Store each iteration's data and plot them.
+2. Add get_colors to obtain colors for array-like data.
+    E.g.,
+        cmap = plt.get_cmap(name='rainbow')     # get cmap
+        norm = matplotlib.colors.Normalize(vmin=min(y), vmax=max(y))
+        colors = cmap(norm(y), bytes=True)   # RGBA. bytes=True to get integer for each color value
+3. Change "gif" to "mp4"
+    e.g., imageio.v2.mimsave(out_file, images, format='mp4', **kwargs)  # each image 0.5s = duration/n_imgs
+
+
 V0.0.5-4: Update init_iters and update_iters
 
 1. Update init_iters = (75, 225), where 1000 * 0.3 = 300 = 75+225 (250:750=75:225)
    Update update_iters = (35, 105), where 1000 * 0.7 = 700 = 5 batches * (35+105) (here, we have 5 batches)
 2. Set is_optimized = True
 3. Install perplexity.pyx (pip install .)
-
 
 
 V0.0.4-1: Add single neural network

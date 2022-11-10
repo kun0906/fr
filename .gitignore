@@ -12,3 +12,5 @@
 /fr/out/*
 
 /fr/inc_tsne2.py
+/fr/out_recompute_P/*
+

@@ -25,7 +25,7 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 	n_samples = n
 
 	if data_type == 's-curve':
-		S_points, S_color = datasets.make_s_curve(n_samples*2, random_state=random_state)
+		S_points, S_color = datasets.make_s_curve(n_samples * 2, random_state=random_state)
 		X, y = S_points, S_color
 		plot_3d(S_points, S_color, title='manifold 3d')
 	elif data_type == 'moon':
@@ -120,19 +120,20 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 				X = np.concatenate([X, X1], axis=0)
 				y = np.concatenate([y, y1], axis=0)
 
-		mu = r.uniform(low=10, high=12, size=n_clusters)
-		cov = np.asarray([0.1] * n_clusters)
-		cov = np.diag(np.array(cov))
-		percent = 0.01
-		n_outliers =  int(n_samples*percent)
-		X_outliers =  r.multivariate_normal(mu, cov, size=n_outliers)
-		y_outliers = [4] * X_outliers.shape[0]
+		if with_noise:
+			mu = r.uniform(low=10, high=12, size=n_clusters)
+			cov = np.asarray([0.1] * n_clusters)
+			cov = np.diag(np.array(cov))
+			percent = 0.01
+			n_outliers = int(n_samples * percent)
+			X_outliers = r.multivariate_normal(mu, cov, size=n_outliers)
+			y_outliers = [4] * X_outliers.shape[0]
 
-		X = np.concatenate([X, X_outliers], axis=0)
-		y = np.concatenate([y, y_outliers], axis=0)
+			X = np.concatenate([X, X_outliers], axis=0)
+			y = np.concatenate([y, y_outliers], axis=0)
 
 	else:
-		X, y = datasets.make_circles(n_samples=n_samples*2, factor=0.5, noise=0.05, random_state=random_state)
+		X, y = datasets.make_circles(n_samples=n_samples * 2, factor=0.5, noise=0.05, random_state=random_state)
 		if with_noise:
 			n_noise_samples = int(n_samples * 0.01)
 			rng = np.random.RandomState(seed=random_state)
@@ -143,21 +144,21 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 			X = np.concatenate([X, X_noise], axis=0)
 			y = np.concatenate([y, y_noise], axis=0)
 
-		# noisy_moons = datasets.make_moons(n_samples=n_samples, noise=0.05)
-		# blobs = datasets.make_blobs(n_samples=n_samples, random_state=8)
-		# no_structure = np.random.rand(n_samples, 2), None
+	# noisy_moons = datasets.make_moons(n_samples=n_samples, noise=0.05)
+	# blobs = datasets.make_blobs(n_samples=n_samples, random_state=8)
+	# no_structure = np.random.rand(n_samples, 2), None
 
-		# # Anisotropicly distributed data
-		# random_state = 170
-		# X, y = datasets.make_blobs(n_samples=n_samples, random_state=random_state)
-		# transformation = [[0.6, -0.6], [-0.4, 0.8]]
-		# X_aniso = np.dot(X, transformation)
-		# aniso = (X_aniso, y)
-		#
-		# # blobs with varied variances
-		# varied = datasets.make_blobs(
-		# 	n_samples=n_samples, cluster_std=[1.0, 2.5, 0.5], random_state=random_state
-		# )
+	# # Anisotropicly distributed data
+	# random_state = 170
+	# X, y = datasets.make_blobs(n_samples=n_samples, random_state=random_state)
+	# transformation = [[0.6, -0.6], [-0.4, 0.8]]
+	# X_aniso = np.dot(X, transformation)
+	# aniso = (X_aniso, y)
+	#
+	# # blobs with varied variances
+	# varied = datasets.make_blobs(
+	# 	n_samples=n_samples, cluster_std=[1.0, 2.5, 0.5], random_state=random_state
+	# )
 
 	# ============
 	# Set up cluster parameters
