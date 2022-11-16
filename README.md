@@ -19,11 +19,14 @@ dev-version
 # Usage 
 > python3 xxx.py 
 
+$\mu$
+
+Inline equation: $equation$
 
 # Examples
 ...
 
 
 # Contact 
-- Email: kun.bj@outlook.com
+- Email: kun88.yang@outlook.com
 > 

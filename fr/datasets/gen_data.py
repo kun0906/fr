@@ -163,7 +163,7 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 	# ============
 	# Set up cluster parameters
 	# ============
-	plt.figure()
+	# plt.figure()
 	# plt.subplots_adjust(
 	# 	left=0.02, right=0.98, bottom=0.001, top=0.95, wspace=0.05, hspace=0.01
 	# )

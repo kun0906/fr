@@ -58,15 +58,18 @@ def _joint_probabilities(distances, desired_perplexity, verbose):
 	conditional_P, C_S_Pi, Beta = _binary_search_perplexity(
 		distances, desired_perplexity, verbose
 	)
-	P = conditional_P + conditional_P.T
-	sum_P = np.maximum(np.sum(P), MACHINE_EPSILON)
-	P = np.maximum(squareform(P) / sum_P, MACHINE_EPSILON)
+	P = conditional_P + conditional_P.T     # P_ij = P_i|j + P_j|i
+	sum_P = np.maximum(np.sum(P), MACHINE_EPSILON)  # 2N = sum_P
+	P = np.maximum(squareform(P) / sum_P, MACHINE_EPSILON)  # P_ij / (2N)
 	return P, sum_P, conditional_P, C_S_Pi, Beta
 
 
 def update_joint_probabilities(distances, desired_perplexity, old_C_P, old_C_S_Pi, old_Beta,
                                verbose, is_optimized=True):
 	"""Compute joint probabilities p_ij from distances.
+
+	# Using Old_P to compute the new P directly is not easy because Old_P = C_P + C_P.T;
+	# however, for new P, we need old C_P.
 
 	Parameters
 	----------
@@ -91,33 +94,37 @@ def update_joint_probabilities(distances, desired_perplexity, old_C_P, old_C_S_P
 	distances = distances.astype(np.float32, copy=False)
 	np.fill_diagonal(distances, np.inf)
 	n, _ = old_C_P.shape
+	# for each new data point, find the closest neighbor;
+	# then use the neighbor's beta as the new point's beta (related to sigma).
 	indices = np.argmin(distances[n:, :n], axis=1)
 	Beta = np.concatenate([old_Beta, old_Beta[indices]])
 	B_ = np.repeat(Beta[np.newaxis, :], Beta.shape[0], 0).T  # make it as a matrix
 
 	if is_optimized:
 		C_P = np.zeros(distances.shape)
-		C_P[:n, n:] = np.exp(-distances[:n, n:] * B_[:n, n:])
-		C_P[n:, :] = np.exp(-distances[n:, :] * B_[n:, :])
-		S_ = np.repeat(old_C_S_Pi[np.newaxis, :], old_C_S_Pi.shape[0], 0).T
-		C_P[:n, :n] = old_C_P * S_
+		C_P[:n, n:] = np.exp(-distances[:n, n:] * B_[:n, n:])  # top right exp(- dist * beta) for new data points
+		C_P[n:, :] = np.exp(-distances[n:, :] * B_[n:, :])  # bottom
+		S_ = np.repeat(old_C_S_Pi[np.newaxis, :], old_C_S_Pi.shape[0], 0).T  # old sum for each row
+		C_P[:n,
+		:n] = old_C_P * S_  # top left(previous C_P): rescale back to the original results with the previous sum.
 		print(np.max(np.exp(-distances * B_) - C_P))
 	else:
 		C_P = np.exp(-distances * B_)  # elementwise multiplication: It can be further optimized.
 
 	np.fill_diagonal(C_P, 0)
 	EPSILON_DBL = 1e-8
-	if is_optimized:
-		C_S_Pi = np.concatenate([old_C_S_Pi + np.sum(C_P[:n, n:], axis=1), np.sum(C_P[n:, :], axis=1)])
+	if is_optimized:  # get the new sum of new P with old_sum and new batch data sum
+		C_S_Pi = np.concatenate([(old_C_S_Pi + np.sum(C_P[:n, n:], axis=1)), np.sum(C_P[n:, :], axis=1)])
 		print(np.max(np.sum(C_P, axis=1) - C_S_Pi))
 	else:
 		C_S_Pi = np.sum(C_P, axis=1)  # It can be further optimized.
 
 	C_S_Pi[C_S_Pi == 0] = EPSILON_DBL  # for dividing 0 issue.
 	S_ = np.repeat(C_S_Pi[np.newaxis, :], C_S_Pi.shape[0], 0).T
-	C_P = C_P / S_
+	C_P = C_P / S_  # rescale the new data with the new sum. Here np.sum(C_P, axis=1) = [1] * n_rows = N
 	P = C_P + C_P.T  # p_ij = (p_i|j + p_j|i)
-	sum_P = np.maximum(np.sum(P), MACHINE_EPSILON)
+	sum_P = np.maximum(np.sum(P),
+	                   MACHINE_EPSILON)  # p_ij / (2*N), where N = np.sum(C_P, axis=1) + np.sum(C_P.T, axis=1)
 	P = np.maximum(squareform(P) / sum_P, MACHINE_EPSILON)
 
 	return P, C_P, C_S_Pi, Beta
@@ -1225,7 +1232,7 @@ class INC_TSNE(BaseEstimator):
 			opt_args["momentum"] = 0.8
 			opt_args["n_iter_without_progress"] = self.n_iter_without_progress
 			params, kl_divergence, it, res2 = _gradient_descent(obj_func, params, X, y, **opt_args)
-
+			if it == opt_args["it"]: it = it - 1
 		# Save the final number of iterations
 		self.n_iter_ = it
 		ed = time.time()
@@ -1412,11 +1419,14 @@ class INC_TSNE(BaseEstimator):
 		params, kl_divergence, it, res1 = _gradient_descent(obj_func, params, X, y, **opt_args)
 		ed = time.time()
 		dur = ed - st
-		pre_iter = it + 1
+		pre_iter = it
 		if n_iter[0] == 0:
 			self.kl_divergence_lst.append((0, 0, dur, 0))
 		else:
-			self.kl_divergence_lst.append((kl_divergence, pre_iter, dur, dur / pre_iter))
+			if it > 0:
+				self.kl_divergence_lst.append((kl_divergence, it+1, dur, dur /(it+1)))
+			else:
+				self.kl_divergence_lst.append((kl_divergence, 0, dur, 0))
 		if self.verbose:
 			print(
 				"[t-SNE] KL divergence after %d iterations with early exaggeration: %f"
@@ -1428,21 +1438,22 @@ class INC_TSNE(BaseEstimator):
 		P /= self.early_exaggeration
 		st = time.time()
 		# remaining = self.n_iter - self._EXPLORATION_N_ITER
-		remaining = self.n_iter - self._EXPLORATION_N_ITER
+		remaining = sum(n_iter) - it
 		if it < self._EXPLORATION_N_ITER or remaining > 0:
 			opt_args["n_iter"] = n_iter[0] + n_iter[1]
-			opt_args["it"] = it + 1
+			opt_args["it"] = it + 1 if it > 0 else 0
 			opt_args["momentum"] = 0.8
 			opt_args["n_iter_without_progress"] = self.n_iter_without_progress
 			# params, kl_divergence, it = _gradient_descent_partial(obj_func, params, **opt_args)
 			params, kl_divergence, it, res2 = _gradient_descent(obj_func, params, X, y, **opt_args)
-
 		# Save the final number of iterations
 		self.n_iter_ = it
-		pre_iter = (it + 1 - (pre_iter - 1))
 		ed = time.time()
 		dur = ed - st
-		self.kl_divergence_lst.append((kl_divergence, pre_iter, dur, dur / pre_iter))
+		if self.n_iter_ > 0:
+			self.kl_divergence_lst.append((kl_divergence, (self.n_iter_-pre_iter), dur, dur/(self.n_iter_-pre_iter)))
+		else:
+			self.kl_divergence_lst.append((kl_divergence, self.n_iter_-pre_iter, dur, 0))
 		if self.verbose:
 			print(
 				"[t-SNE] KL divergence after %d iterations: %f"
@@ -1467,12 +1478,13 @@ class INC_TSNE(BaseEstimator):
 		st = time.time()
 		if is_recompute_P:
 			if self.method == 'exact':
-				self.P, _, _, _, _ = _joint_probabilities(self.distances, self.perplexity, self.verbose)
+				self.P, self.sum_P,  self.C_P, self.C_S_Pi, self.Beta = _joint_probabilities(self.distances, self.perplexity, self.verbose)
 			else:
 				raise NotImplementedError
 		else:
 			if self.method == 'exact':
-				self.P, self.C_P, self.C_S_Pi, self.Beta = update_joint_probabilities(self.distances, self.perplexity,
+				self.P, self.C_P, self.C_S_Pi, self.Beta = update_joint_probabilities(self.distances,
+				                                                                      self.perplexity,
 				                                                                      self.C_P, self.C_S_Pi, self.Beta,
 				                                                                      self.verbose)
 			# for 'debug':
@@ -1497,8 +1509,10 @@ class INC_TSNE(BaseEstimator):
 			).astype(np.float32)
 			X_embedded = np.concatenate([self.embedding_, X_batch_embedded], axis=0)
 		elif self.update_init == 'weighted':
-			w = (squareform(self.P))[-n_batch:, :-n_batch]
+			# w = squareform(self.P)[-n_batch:, :-n_batch]  # p_ij = (p_i|j + p_j|i)/(2N)
+			w = self.C_P[-n_batch:, :-n_batch]  # normalized C_P: p_j|i
 			Y = self.embedding_
+			print(self.C_P.shape, n_batch, self.embedding_.shape)
 			X_batch_embedded = np.dot(w, Y).astype(np.float32)
 			X_embedded = np.concatenate([self.embedding_, X_batch_embedded], axis=0)
 		elif self.update_init == 'debug':

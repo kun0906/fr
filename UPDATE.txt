@@ -1,9 +1,22 @@
-V0.0.5-6-2: Recompute P for every update from scratch without updating distance accumulatively.
+V0.0.7: Use C_P as w to initialize new Y and compute trustworthiness (trust_diff) with tsne.X_embedding and inc_tsne.X_embedding
+
+1. Update once only
+    Add main_inc_tsne2.py
+2. Compute trustworthiness (trust_diff) with tsne.X_embedding and inc_tsne.X_embedding
+    Also, add trust_diff into the plot
+3. Use C_P (instead of P directly) as w to initialize new Y
+    # w = squareform(self.P)[-n_batch:, :-n_batch]  # p_ij = (p_i|j + p_j|i)/(2N)
+	w = self.C_P[-n_batch:, :-n_batch]
+4. Show each iteration duration and KL error
+    _show_each_iteration_duration(tsne, inc_tsne, out_dir, idx)
+
+
+V0.0.6-3: Recompute P for every update from scratch without updating distance accumulatively.
 
 1. recompute P for every update from scratch without updating distance accumulatively.
 
 
-V0.0.5-6:
+V0.0.6-2: Update the way to compute n_init_iter and n_update_iters
 
 1. Update the way to compute n_init_iter and n_update_iters to make the total number of iterations equals to n_iters.
     E.g., changing np.ceil() to np.round() and n_update_iters
@@ -13,8 +26,7 @@ V0.0.5-6:
     E.g., print(f'figure number: {plt.gcf().number}, {fig.number}')
 
 
-
-V0.0.5-5: Plot the result for each iteration.
+V0.0.6: Plot the result for each iteration.
 
 1. Store each iteration's data and plot them.
 2. Add get_colors to obtain colors for array-like data.

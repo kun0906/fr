@@ -1,5 +1,3 @@
-
-
 """
 
     https://pytorch.org/tutorials/beginner/blitz/neural_networks_tutorial.html
@@ -20,11 +18,17 @@ import matplotlib.pyplot as plt
 np.set_printoptions(precision=3, suppress=True, formatter={'float': '{:.3f}'.format}, edgeitems=120, linewidth=100000)
 
 def main():
-	X, y = gen_data.gen_data(n=35, is_show=True, data_type='moon1', with_noise = True, random_state=42)
-
+	out_dir = 'out'
+	# data_name = '2gaussians'
+	data_name = '2circles'
+	# data_name = 's-curve'
+	# data_name = 'mnist'
+	# data_name = '5gaussians-5dims'
+	data_name = '3gaussians-10dims'
+	X, y = gen_data.gen_data(n=100, data_type= data_name, is_show=True, with_noise=True, random_state=42)
 	print(np.quantile(X, q=[0, 0.25, 0.5, 0.75, 1.0], axis=0))
 
-	tsne = TSNE(perplexity=30, random_state=42)
+	tsne = TSNE(perplexity=30, method='exact', random_state=42)
 	X_ = tsne.fit_transform(X)
 
 	plt.scatter(X_[:, 0], X_[:, 1], c=y)

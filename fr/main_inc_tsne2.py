@@ -116,7 +116,7 @@ def _show_embedded_data(tsne, inc_tsne, X_pre, y_pre, args, out_dir, idx=0, lear
 	f = os.path.join(out_dir, f'batch/{idx}', f'{learning_phase}-{jth_iter}.png')
 	nrows, ncols = 1, 2
 	fig, ax = plt.subplots(nrows, ncols, figsize=(10, 5), dpi=600)  # width, height
-	if jth_iter%10 == 0: print(f'{jth_iter}th iteration, figure number: {plt.gcf().number}, {fig.number}')
+	if jth_iter % 10 == 0: print(f'{jth_iter}th iteration, figure number: {plt.gcf().number}, {fig.number}')
 	data_name = args['data_name']
 	Y_update_init = args['update_init']
 	n1 = len(tsne._update_data[learning_phase])
@@ -152,7 +152,7 @@ def _show_embedded_data(tsne, inc_tsne, X_pre, y_pre, args, out_dir, idx=0, lear
 	return f
 
 
-def _show_update_data(tsne, inc_tsne, out_dir, idx=0, is_show=False):
+def _show_update_data(tsne, inc_tsne, out_dir, idx=0):
 	f = os.path.join(out_dir, 'batch', f'{idx}.png')
 	nrows, ncols = 1, 2
 	fig, ax = plt.subplots(nrows, ncols, figsize=(10, 5), dpi=600)  # width, height
@@ -231,101 +231,7 @@ def _show_update_data(tsne, inc_tsne, out_dir, idx=0, is_show=False):
 	plt.tight_layout()
 	check_path(os.path.dirname(f))
 	plt.savefig(f, dpi=600, bbox_inches='tight')
-	if is_show: plt.show()
-	plt.close()
-
-
-def _show_each_iteration_duration(tsne, inc_tsne, out_dir, idx=0, is_show=False):
-	f = os.path.join(out_dir, 'batch', f'{idx}_duration.png')
-	nrows, ncols = 1, 2
-	fig, ax = plt.subplots(nrows, ncols, figsize=(10, 5), dpi=600)  # width, height
-	print(f'figure number: {plt.gcf().number}, {fig.number}')
-	# tsne
-	res1, res2 = tsne._update_data
-	n1, n2 = len(res1), len(res2)   # for each learning phase, the number of iterations.
-	i_iter_duration1 = []
-	error1 = []
-	for _i in range(len(res1)):
-		i_iter_duration1.append(res1[_i]['i_iter_duration'])
-		v = res1[_i]['error']
-		error1.append(-1 if np.isnan(v) else v)
-
-	i_iter_duration2 = []
-	error2 = []
-	for _i in range(len(res2)):
-		i_iter_duration2.append(res2[_i]['i_iter_duration'])
-		v = res2[_i]['error']
-		error2.append(-1 if np.isnan(v) else v)
-
-	_X = range(n1 + n2)
-	i_iter_duration = i_iter_duration1 + i_iter_duration2
-	ax[0].plot(_X, i_iter_duration, color='gray', ls='--', marker='*',
-	           markerfacecolor='blue', markeredgecolor='blue', label='tsne')
-	ax[0].axvline(x=n1, ls='-', color='black')
-	position_duration = float(fmt((max(i_iter_duration) + min(i_iter_duration)) / 2))
-	ax[0].text(n1 + 0.1, position_duration, f'tsne (n1:{n1})', rotation=90)  # (x, y, text)
-	title = f'tsne({n1},{n2}): {fmt(np.sum(i_iter_duration))}s=>' \
-	        f'phase1({fmt(np.sum(i_iter_duration1))}s): {fmt(np.mean(i_iter_duration1))}+/-{fmt(np.std(i_iter_duration1))}, ' \
-	        f'phase2({fmt(np.sum(i_iter_duration2))}s): {fmt(np.mean(i_iter_duration2))}+/-{fmt(np.std(i_iter_duration2))}'
-	# acc_1nn
-	error = error1 + error2
-	ax[1].plot(_X, error, color='gray', ls='--', marker='*',
-	           markerfacecolor='blue', markeredgecolor='blue', label='tsne')
-	ax[1].axvline(x=n1, ls='-', color='black')
-	position_error = float(fmt((max(error) + min(error)) / 2))
-	ax[1].text(n1 + 0.1, position_error, f'tsne (n1:{n1})', rotation=90)  # (x, y, text)
-
-	# inc_tsne
-	res1, res2 = inc_tsne._update_data
-	n1, n2 = len(res1), len(res2)  # for each learning phase, the number of iterations.
-	i_iter_duration1 = []
-	error1 = []
-	for _i in range(len(res1)):
-		i_iter_duration1.append(res1[_i]['i_iter_duration'])
-		v = res1[_i]['error']
-		error1.append(-1 if np.isnan(v) else v)
-
-	i_iter_duration2 = []
-	error2 = []
-	for _i in range(len(res2)):
-		i_iter_duration2.append(res2[_i]['i_iter_duration'])
-		v = res2[_i]['error']
-		error2.append(-1 if np.isnan(v) else v)
-	_X = range(n1 + n2)
-	# trustworthiness
-	i_iter_duration = i_iter_duration1 + i_iter_duration2
-	ax[0].plot(_X, i_iter_duration, color='gray', ls='-', marker='o',
-	           markerfacecolor='green', markeredgecolor='green', label='inc_tsne')
-	ax[0].axvline(x=n1, ls='-', color='black')
-	# position = float(fmt((max(trust) + min(trust)) / 2))
-	ax[0].text(n1 + 0.1, position_duration, f'inc_tsne n1:{n1}', rotation=90)  # (x, y, text)
-	title += f'\ninc_tsne({n1},{n2}): {fmt(np.sum(i_iter_duration))}s=>' \
-	        f'phase1({fmt(np.sum(i_iter_duration1))}s): {fmt(np.mean(i_iter_duration1))}+/-{fmt(np.std(i_iter_duration1))}, ' \
-	        f'phase2({fmt(np.sum(i_iter_duration2))}s): {fmt(np.mean(i_iter_duration2))}+/-{fmt(np.std(i_iter_duration2))}'
-	# acc_1nn
-	error = error1 + error2
-	ax[1].plot(_X, error, color='gray', ls='-', marker='o',
-	           markerfacecolor='green', markeredgecolor='green', label='inc_tsne')
-	ax[1].axvline(x=n1, ls='-', color='black')
-	# position = float(fmt((max(acc) + min(acc)) / 2))
-	ax[1].text(n1 + 0.1, position_error, f'inc_tsne n1:{n1}', rotation=90)  # (x, y, text)
-
-	ax[0].set_xlabel(f'Iteration')
-	y_label = 'i_iteration_duration'
-	ax[0].set_ylabel(y_label)
-	ax[0].legend()
-	ax[0].set_title(f'{idx}th_iteration_duration.\n{title}', fontsize=8)
-	ax[1].set_xlabel(f'Iteration')
-	y_label = 'KL Error'
-	ax[1].set_ylabel(y_label)
-	ax[1].legend()
-	ax[1].set_title(f'KL Error. Idx: {idx}', fontsize=8)
-
-	# fig.suptitle(f'INC_TSNE X: batch_{batch}')
-	plt.tight_layout()
-	check_path(os.path.dirname(f))
-	plt.savefig(f, dpi=600, bbox_inches='tight')
-	if is_show: plt.show()
+	plt.show()
 	plt.close()
 
 
@@ -344,17 +250,22 @@ def main(args):
 	print(f'X.shape: {X.shape}, y: {collections.Counter(y)}')
 	print(np.quantile(X, q=[0, 0.25, 0.5, 0.75, 1.0], axis=0))
 
+	if args['data_name'] == 'mnist':
+		indices = np.where((y % 2 == 0) & (y > 0))[0]
+		X = X[indices]
+		y = y[indices]
+
 	n, d = X.shape
 	n_iter = args['n_iter']
-	init_percent = 0.3
+	init_percent = 0.9
 	n_init = int(np.round(n * init_percent))  # the total number of initial training data size.
-	n_init_iter = int(np.round(n_iter * init_percent))  # the total number of initial iterations
+	n_init_iter = int(np.round(n_iter * 1.0))  # the total number of initial iterations
 	n1 = int(np.round(n_init_iter * (1 / 4)))  # 250:750 = 1:3
 	args['init_iters'] = (n1, n_init_iter - n1)
 
-	batch_percent = 0.1
+	batch_percent = 1.0
 	bs = int(np.round((n - n_init) * batch_percent))  # bs is 10% of (n-n_init)
-	each_iter = int((n_iter - n_init_iter) * batch_percent)  # floor
+	each_iter = int(0.5 * n_iter)  # int((n_iter - n_init_iter) * batch_percent)  # floor
 	n1 = int(np.round(each_iter * (1 / 4)))  # 250:750 = 1:3
 	print(f'n1: {np.round(each_iter * (1 / 4))}')
 	if n1 <= 0 or each_iter - n1 <= 0:
@@ -371,7 +282,7 @@ def main(args):
 	# Incremental TSNE
 	Y_update_init = args['update_init']
 	tsne = TSNE(perplexity=args['perplexity'], method=args['method'], n_iter=n_iter,
-	            _EXPLORATION_N_ITER=n_init_iter,
+	            _EXPLORATION_N_ITER=int(np.round(n_init_iter * (1 / 4))),
 	            random_state=random_state, verbose=0)
 	inc_tsne = INC_TSNE(perplexity=args['perplexity'], method=args['method'], update_init=args['update_init'],
 	                    n_iter=n_iter, init_iters=args['init_iters'], update_iters=args['update_iters'],
@@ -407,7 +318,6 @@ def main(args):
 
 		# save update data
 		_show_update_data(tsne, inc_tsne, out_dir, idx=0)
-		_show_each_iteration_duration(tsne, inc_tsne, out_dir, idx=0)
 
 		show_detail_flg = False
 		if show_detail_flg:
@@ -436,14 +346,14 @@ def main(args):
 			n_update_iter = args['update_iters']
 		else:
 			X_batch, X, y_batch, y = X, np.zeros((0,)), y, np.zeros((0,))
-			left_iters = n_iter - _n_accumulated_iters
+			left_iters = 1  # 250:750 = 1:3
 			_iters = int(np.round(left_iters * (1 / 4)))
 			n_update_iter = (_iters, left_iters - _iters)
 		if i > 0 and i % 5 == 0:
 			is_recompute_P = True
 		else:
 			is_recompute_P = False
-			# is_recompute_P = True   # always recompute P from scratch
+		# is_recompute_P = True   # always recompute P from scratch
 		_n_accumulated_iters += sum(n_update_iter)
 		print(f'{i}-th batch, X_batch: {X_batch.shape}, y_batch: {collections.Counter(y_batch)}, '
 		      f'is_recompute_P: {is_recompute_P}, update_iters: {n_update_iter}, '
@@ -453,8 +363,9 @@ def main(args):
 		st = time.time()
 		inc_tsne.update(X_pre, y_pre, X_batch, y_batch, n_update_iter, is_recompute_P)
 		ed = time.time()
-		inc_tsne_duration = res['inc_tsne'][-1][0] + (ed - st)
-		inc_tsne_n_iter_ = res['inc_tsne'][-1][1] + inc_tsne.n_iter_ + 1  # start for 0
+		# inc_tsne_duration = res['inc_tsne'][-1][0] + (ed - st)
+		inc_tsne_duration = (ed - st)
+		inc_tsne_n_iter_ = inc_tsne.n_iter_ + 1 if sum(n_update_iter) > 0 else 0  # start for 0
 		X_pre = np.concatenate([X_pre, X_batch], axis=0)
 		y_pre = np.concatenate([y_pre, y_batch], axis=0)
 		scores = evaluate(X_pre, y_pre, inc_tsne.embedding_)
@@ -467,7 +378,7 @@ def main(args):
 		ed = time.time()
 		tsne_duration = ed - st
 		scores = evaluate(X_pre, y_pre, tsne.embedding_)
-		tsne.n_iter_ += 1  # start for 0
+		tsne.n_iter_ = tsne.n_iter_ + 1 if tsne.n_iter_ > 0 else 0  # start for 0
 		res['tsne'].append((tsne_duration, tsne.n_iter_, scores))
 		X_tsne = tsne.embedding_
 
@@ -521,19 +432,17 @@ def main(args):
 			plt.close()
 			batch_figs.append(f)
 
-			_show_update_data(tsne, inc_tsne, out_dir, idx=i)
-			_show_each_iteration_duration(tsne, inc_tsne, out_dir, idx=i)
+		# _show_update_data(tsne, inc_tsne, out_dir, idx=i)
 
 		# time components: previous_time + current_(update_dist_time + update_P_time + concat_Y_time + update_Y_time)
 		inc_tsne_duration_components = '+'.join(fmt([res['inc_tsne'][-2][0]] + list(inc_tsne.update_res['time'])))
 		tsne_duration_components = '+'.join(fmt([0] + list(tsne.fit_res['time'])))
-		# (kl_error, n_update_iter, duration, duration/n_update_iter) for two learning phases
 		inc_tsne_kl = ' - '.join([','.join(fmt(list(v))) for v in inc_tsne.update_res['kl_divergence']])
 		tsne_kl = ' - '.join([','.join(fmt(list(v))) for v in tsne.fit_res['kl_divergence']])
-		print(f'batch_{i},  tsne({tsne_iters}): {fmt(tsne_duration)}s(=>{tsne_duration_components}), kl two gradient update phases: {tsne_kl}) '
+		print(f'batch_{i},  tsne({tsne_iters}): {fmt(tsne_duration)}s ({tsne_duration_components}, kl: {tsne_kl}) '
 		      f'vs. \n\t'
-		      f'inc_tsne({inc_tsne_iters}): {fmt(inc_tsne_duration)}s(=>{inc_tsne_duration_components}), '
-		      f'kl two gradient update phases: {inc_tsne_kl}).')
+		      f'inc_tsne({inc_tsne_iters}): {fmt(inc_tsne_duration)}s ({inc_tsne_duration_components}, '
+		      f'kl: {inc_tsne_kl}).')
 		i += 1
 
 	"""4. Save and plot results
@@ -575,7 +484,7 @@ def main(args):
 		plt.tight_layout()
 		f = os.path.join(out_dir, f'TSNE_vs_INCTSNE-{y_label}.png')
 		plt.savefig(f, dpi=600, bbox_inches='tight')
-		plt.show()
+		# plt.show()
 		plt.close()
 
 	# Make animation with all batches
@@ -590,8 +499,8 @@ if __name__ == '__main__':
 	# data_name = 's-curve'
 	# data_name = '5gaussians-5dims'
 	# data_name = '3gaussians-10dims'
-	n = 500
-	n_iter = 100
+	n = 200
+	n_iter = 200
 	args_lst = []
 	# """Case 0: 2circles
 	# 	It includes 2 clusters, and each has 500 data points in R^2.
@@ -602,15 +511,15 @@ if __name__ == '__main__':
 		It includes 3 clusters, and each has 500 data points in R^10.
 	"""
 	args = {'data_name': '3gaussians-10dims', 'n': n, 'n_iter': n_iter}
-	args_lst.append(args)
+	# args_lst.append(args)
 	"""Case 2: mnist
 		It includes 10 clusters, and each has 500 data points in R^784.
 	"""
 	args = {'data_name': 'mnist', 'n': n, 'n_iter': n_iter}
-	# args_lst.append(args)
+	args_lst.append(args)
 	for args in args_lst:
 		for update_init in ['weighted']:  # 'Gaussian',
-			perplexity = 30
+			perplexity = 50
 			args['method'] = "exact"  # 'exact', "barnes_hut"
 			args['perplexity'] = perplexity
 			args['update_init'] = update_init

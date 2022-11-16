@@ -216,6 +216,7 @@ def _gradient_descent(
 
 	tic = time.time()
 	for i in range(it, n_iter):
+		i_start_time = time.time()
 		check_convergence = (i + 1) % n_iter_check == 0
 		# only compute the error when needed
 		kwargs["compute_error"] = check_convergence or i == n_iter - 1
@@ -234,7 +235,9 @@ def _gradient_descent(
 
 		X_embedded = copy.deepcopy(p.reshape(X.shape[0], 2))
 		scores = evaluate(X, y, X_embedded)
-		res.append({'error': error, 'grad': grad, 'update': copy.deepcopy(update), 'Y': X_embedded, 'scores': scores})
+		i_end_time = time.time()
+		res.append({'error': error, 'grad': grad, 'update': copy.deepcopy(update),
+		            'Y': X_embedded, 'scores': scores, 'i_iter_duration': i_end_time-i_start_time})
 
 		if check_convergence:
 			toc = time.time()
