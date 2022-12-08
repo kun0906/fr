@@ -590,26 +590,26 @@ if __name__ == '__main__':
 	# data_name = 's-curve'
 	# data_name = '5gaussians-5dims'
 	# data_name = '3gaussians-10dims'
-	n = 500
-	n_iter = 100
+	# n = 300
+	n_iter = 200
 	args_lst = []
 	# """Case 0: 2circles
 	# 	It includes 2 clusters, and each has 500 data points in R^2.
 	# """
-	args = {'data_name': '2circles', 'n': n, 'n_iter': n_iter}
+	args = {'data_name': '2circles', 'n': 300, 'n_iter': n_iter}
 	# args_lst.append(args)
 	"""Case 1: 3gaussians-10dims
 		It includes 3 clusters, and each has 500 data points in R^10.
 	"""
-	args = {'data_name': '3gaussians-10dims', 'n': n, 'n_iter': n_iter}
+	args = {'data_name': '3gaussians-10dims', 'n': 300, 'n_iter': n_iter}
 	args_lst.append(args)
 	"""Case 2: mnist
 		It includes 10 clusters, and each has 500 data points in R^784.
 	"""
-	args = {'data_name': 'mnist', 'n': n, 'n_iter': n_iter}
+	args = {'data_name': 'mnist', 'n': 100, 'n_iter': n_iter}
 	# args_lst.append(args)
 	for args in args_lst:
-		for update_init in ['weighted']:  # 'Gaussian',
+		for update_init in ['weighted']:  # 'Gaussian', weighted'
 			perplexity = 30
 			args['method'] = "exact"  # 'exact', "barnes_hut"
 			args['perplexity'] = perplexity

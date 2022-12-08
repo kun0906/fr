@@ -1,3 +1,18 @@
+
+
+V0.0.8: Update the dataset and normalize the weights for computing Y.
+
+1. Update the dimension for '3gaussians-10dims'
+    e.g., mu = r.uniform(low=0, high=5, size=n_cluster) -> mu = r.uniform(low=0, high=5, size=10)
+2. Normalize the weights for computing the initial embeddings (e.g., Y)
+    e.g., in inc_tsne.py
+        w_sum = np.sum(w, axis=1).reshape((-1, 1))
+		w = w/w_sum  # n
+3. Add more evalutation metrics and plot the shepard diagram.
+    e.g., shepard diagram goodness, and normalized stress
+
+
+
 V0.0.7: Use C_P as w to initialize new Y and compute trustworthiness (trust_diff) with tsne.X_embedding and inc_tsne.X_embedding
 
 1. Update once only

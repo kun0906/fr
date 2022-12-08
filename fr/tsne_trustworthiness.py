@@ -28,7 +28,7 @@ MACHINE_EPSILON = np.finfo(np.double).eps
 
 
 def dist2(x1, x2):
-	return np.sum(np.square(x1, x2))
+	return np.sum(np.square(x1-x2))
 
 
 def _trustworthiness_loss_gradient(
@@ -84,59 +84,89 @@ def _trustworthiness_loss_gradient(
 	# print(X_embedded.shape, A.shape)
 	X_embedded = X_embedded.reshape(n_samples, n_components)
 	# Objective: C
-	if compute_error:
-		loss = 0
-		for i in range(n_samples):
-			for j in knn_indices[i]:
-				if i == j: continue # ignore the ponit itself
-				d = dist2(X_embedded[i], X_embedded[j]) - A[i]
-				if d > 0:
-					loss += d
-		loss = 0
-	else:
-		loss = np.nan
+	compute_error = True
+	# if compute_error:
+	# 	loss = 0
+	# 	for i in range(n_samples):
+	# 		for j in set(knn_indices[i]):
+	# 			if i == j: continue # ignore the ponit itself
+	# 			d = dist2(X_embedded[i], X_embedded[j]) - A[i]
+	# 			if d > 0:
+	# 				loss += d
+	# 	loss = 0
+	# else:
+	# 	loss = np.nan
 
 	# Gradient: dC/dY
 	grad = np.ndarray((n_samples, n_components), dtype=X_embedded.dtype)
+	dist_X = pairwise_distances(X)
+	# dist_X = np.exp(-pairwise_distances(X))
+	dist_X = (dist_X - np.min(dist_X)) / (np.max(dist_X)-np.min(dist_X))    # normalize to [0, 1]
+	# max_dist_X = np.max(dist_X)
+	dist_Y = pairwise_distances(X_embedded)
+	max_dist_Y = np.max(dist_Y)
+	loss = 0
 	for k in range(n_samples):
-		g = 0
-		# each data:
+		g = np.zeros((1, n_components))
+		# for each data: we want to get dC/dp
 		y_k = X_embedded[k]
+		X_k = X[k]
 		# Gradient: dC/dp   for X_embedding.
+		# i_loss = 0
 		for i in range(n_samples):
 			y_i = X_embedded[i]
+			X_i = X[i]
 			if i != k:
-				if k in knn_indices[i] and dist2(y_i, y_k) > A[i]:  # if xk is the neighbor of xi
-					g += 2*(y_i - y_k)
+				if k in set(knn_indices[i]):
+					# w_j = 1 / max(dist2(X_i, X_k), 1e-8)
+					# w_j = 1 / max(dist_X[i, k]/max_dist_X, 1e-8)
+					# w_j = 1/ max(dist_X[i, k], 1e-5)
+					w_j = -np.log10(max(dist_X[i, k], 1e-8))
+					g += 2 * (y_i - y_k) * (-1) * w_j / max_dist_Y
+					loss += w_j * dist2(y_i, y_k)/max_dist_Y
+				# if k in set(knn_indices[i]) and dist2(y_i, y_k) > A[i]**2:  # if xk is the neighbor of xi
+				# 	# print(g, y_i - y_k)
+				# 	w_j = 1/max(dist2(X_i, X_k), 1e-8)
+				# 	g += 2*(y_i - y_k) * w_j
 				else:
 					pass
 			else:  # i == k
-				for j in knn_indices[i]:
+				for j in set(knn_indices[i]): # for each xk neighbor, we compute the grad
 					y_j = X_embedded[j]
-					if dist2(y_i, y_j) > A[i]:
-						g += 2*(y_i - y_j)
+					# X_j = X[j]
+					# w_j = 1 / max(dist_X[i, j]/max_dist_X, 1e-8)
+					# w_j = 1 / max(dist_X[i, k], 1e-5)
+					w_j = -np.log10(max(dist_X[i, k], 1e-8))
+					g += 2 * (y_i - y_j) * w_j/max_dist_Y
+					loss += w_j * dist2(y_i, y_j) / max_dist_Y
+					# if dist2(y_i, y_j) > A[i]**2:
+					# 	# print(g, y_i - y_k)
+					# 	w_j = 1 / max(dist2(X_i, X_j), 1e-8)
+					# 	g += 2*(y_i - y_j) * w_j
+			# print(i, g)
+		# print(k, g)
 		grad[k] = g
 
-		# Gradient: dC/dA
-		grad_A = np.ndarray((n_samples,), dtype=A.dtype)
-		for k in range(n_samples):
-			g = 0
-			# each data
-			y_k = X_embedded[k]
-			x_k = X[k]
-			for i in range(n_samples):
-				y_i = X_embedded[i]
-				if i != k:
-					if k in knn_indices[i] and dist2(y_i, y_k) > A[i]:  # if xk is the neighbor of xi
-						g = g - 1
-					else:
-						pass
-				else:  # i == k
-					for j in knn_indices[i]:
-						y_j = X_embedded[j]
-						if dist2(y_i, y_j) > A[i]:
-							g = g - 1
-			grad_A[k] = g
+		# # Gradient: dC/dA
+		grad_A = np.zeros((n_samples,), dtype=np.float32)
+		# for k in range(n_samples):
+		# 	g = 0
+		# 	# each data
+		# 	y_k = X_embedded[k]
+		# 	x_k = X[k]
+		# 	for i in range(n_samples):
+		# 		y_i = X_embedded[i]
+		# 		if i != k:
+		# 			if k in set(knn_indices[i]) and dist2(y_i, y_k) > A[i]**2:  # if xk is the neighbor of xi
+		# 				g = g - 2*1
+		# 			else:
+		# 				pass
+		# 		else:  # i == k
+		# 			for j in set(knn_indices[i]):   # xj is the neighbor of xi or xk
+		# 				y_j = X_embedded[j]
+		# 				if dist2(y_i, y_j) > A[i]**2:
+		# 					g = g - 2*1
+		# 	grad_A[k] = g
 
 	return loss, grad.ravel(), grad_A
 
@@ -244,6 +274,7 @@ def _gradient_descent(
 	res = []  # store the values of each iteration
 
 	tic = time.time()
+
 	for i in range(it, n_iter):
 		check_convergence = (i + 1) % n_iter_check == 0
 		# only compute the error when needed
@@ -253,29 +284,33 @@ def _gradient_descent(
 		grad_norm = linalg.norm(grad)
 		grad_A_norm = linalg.norm(grad_A)
 
-		# https://github.com/scikit-learn/scikit-learn/pull/8768
+		# # https://github.com/scikit-learn/scikit-learn/pull/8768
+		# inc and dec are used for adapting the learning rate
 		inc = update * grad < 0.0
 		dec = np.invert(inc)
-		gains[inc] += 0.2
+		gains[inc] += 0.2   # used to update the learning rate.
+		# If update * grad < 0, which means that grad(t) with update (t-1) in a different direction.
+		# As a result, we should put less weights on the current grad(t)= dC/dp.
 		gains[dec] *= 0.8
 		np.clip(gains, min_gain, np.inf, out=gains)
 		grad *= gains
 		update = momentum * update - learning_rate * grad
 		p[0] += update
+		# p[0] = p[0] - 0.001 * grad
 
-		inc = update_A * grad_A < 0.0
-		dec = np.invert(inc)
-		gains_A[inc] += 0.2
-		gains_A[dec] *= 0.8
-		np.clip(gains_A, min_gain, np.inf, out=gains_A)
-		grad_A *= gains_A
-		update_A = momentum * update_A - learning_rate * grad_A
-		p[1] += update_A
+		# inc = update_A * grad_A < 0.0
+		# dec = np.invert(inc)
+		# gains_A[inc] += 0.2
+		# gains_A[dec] *= 0.8
+		# np.clip(gains_A, min_gain, np.inf, out=gains_A)
+		# grad_A *= gains_A
+		# update_A = momentum * update_A - learning_rate * grad_A
+		# p[1] += update_A
 
 		X_embedded = copy.deepcopy(p[0].reshape(X.shape[0], 2))
 		scores = evaluate(X, y, X_embedded)
 		res.append({'error': error, 'grad': grad, 'update': copy.deepcopy(update), 'Y': X_embedded, 'scores': scores})
-		print(p[0].shape, p[1].shape, flush=True)
+		print(i, p[0].shape, p[1].shape, error, scores.items(), flush=True)
 		if check_convergence:
 			toc = time.time()
 			duration = toc - tic
@@ -531,7 +566,7 @@ class TSNE(BaseEstimator):
 			self,
 			n_components=2,
 			*,
-			perplexity=30.0,
+			perplexity=0.0,
 			early_exaggeration=12.0,
 			learning_rate="warn",
 			n_iter=1000,
@@ -546,7 +581,8 @@ class TSNE(BaseEstimator):
 			angle=0.5,
 			n_jobs=None,
 			square_distances="deprecated",
-			_EXPLORATION_N_ITER=250,
+			_EXPLORATION_N_ITER=0,
+			n_neighbors = 5,
 	):
 		self.n_components = n_components
 		self.perplexity = perplexity
@@ -565,6 +601,7 @@ class TSNE(BaseEstimator):
 		self.n_jobs = n_jobs
 		self.square_distances = square_distances
 		self._EXPLORATION_N_ITER = _EXPLORATION_N_ITER
+		self.n_neighbors = n_neighbors
 
 	def _check_params_vs_input(self, X):
 		if self.perplexity >= X.shape[0]:
@@ -718,7 +755,7 @@ class TSNE(BaseEstimator):
 			# LvdM uses 3 * perplexity as the number of neighbors.
 			# In the event that we have very small # of points
 			# set the neighbors to n - 1.
-			n_neighbors = 1 + 5  # i.e., k = 1+5 including the point itself.
+			n_neighbors = 1 + self.n_neighbors # n_samples//2  # i.e., k = 1+5 including the point itself.
 
 			if self.verbose:
 				print("[t-SNE] Computing {} nearest neighbors...".format(n_neighbors))
@@ -820,9 +857,10 @@ class TSNE(BaseEstimator):
 			X_embedded = 1e-4 * random_state.standard_normal(
 				size=(n_samples, self.n_components)
 			).astype(np.float32)
-			A = 1e-4 * random_state.standard_normal(
-				size=(n_samples,)
-			).astype(np.float32)
+			# A = 1e-4 * random_state.standard_normal(
+			# 	size=(n_samples,)
+			# ).astype(np.float32)
+			A = np.zeros((n_samples, ))
 		else:
 			raise ValueError("'init' must be 'pca', 'random', or a numpy array")
 		ed = time.time()
@@ -852,6 +890,7 @@ class TSNE(BaseEstimator):
 		self.fit_res = {'time': (update_dist_time, update_P_time, concat_Y_time, update_Y_time),
 		                'kl_divergence': self.kl_divergence_lst}
 		self.P = P
+		self.A = A
 		return X_embedded
 
 	def _tsne(
@@ -931,7 +970,7 @@ class TSNE(BaseEstimator):
 		self.n_iter_ = it
 		pre_iter = it - pre_iter + 1
 		dur = ed - st
-
+		self.losses = [_d['error'] for _d in res2]
 		self.kl_divergence_lst.append((kl_divergence, pre_iter, dur, dur / pre_iter))
 		if self.verbose:
 			print(

@@ -2,6 +2,7 @@ import copy
 import time
 
 import numpy as np
+import scipy.stats
 import sklearn
 from scipy import linalg
 
@@ -109,6 +110,10 @@ def evaluate(X, y=None, X_embedded=None):
 	score = trustworthiness(X, X_embedded, n_neighbors=5, metric='euclidean')
 	res['trustworthiness'] = score
 
+	# Get continuity.
+	score = trustworthiness(X_embedded, X, n_neighbors=5, metric='euclidean')
+	res['continuity'] = score
+
 	# Get 1-nearest neighbor accuracy
 	nn = NearestNeighbors(n_neighbors=1)
 	nn.fit(X_embedded)
@@ -116,6 +121,40 @@ def evaluate(X, y=None, X_embedded=None):
 	y_pred = y[indices]
 	acc = sklearn.metrics.accuracy_score(y, y_pred)
 	res['acc_1nn'] = acc
+
+	# Get Neighborhood hit based on K-nearest neighbor
+	k = 5
+	nn = NearestNeighbors(n_neighbors=k)
+	nn.fit(X_embedded)
+	indices = nn.kneighbors(return_distance=False)  # exclude the query node itself
+	nh = 0
+	y_preds = y[indices]
+	n, d = X.shape
+	for i in range(n):
+		s = 0
+		for l in y_preds[i]:
+			if l == y[i]: s+=1
+		nh += s/k
+	res['neighborhood_hit'] = nh/n
+
+	# Get normalized stress
+	n, d = X.shape
+	dist_X = pairwise_distances(X, X, metric="euclidean")
+	dist_Y = pairwise_distances(X_embedded, X_embedded, metric="euclidean")
+	ns = 0
+	for i in range(n):
+		for j in range(n):
+			ns += (dist_X[i][j] - dist_Y[i][j])**2
+	res['normalized_stress'] = ns / np.sum(np.square(dist_X))
+
+	# shepard diagram goodness
+	dist_X = pairwise_distances(X, X)
+	n, _ = X.shape
+	dist_X = dist_X[np.triu_indices(n, k=1)]   # upper triangle matrix without diagonal items
+	dist_Y = pairwise_distances(X_embedded, X_embedded)
+	dist_Y = dist_Y[np.triu_indices(n, k=1)]
+	res['spearman'] = scipy.stats.spearmanr(dist_X, dist_Y)
+	res['pearson'] = scipy.stats.pearsonr(dist_X, dist_Y)
 
 	return res
 
@@ -234,7 +273,8 @@ def _gradient_descent(
 		p += update
 
 		X_embedded = copy.deepcopy(p.reshape(X.shape[0], 2))
-		scores = evaluate(X, y, X_embedded)
+		# scores = evaluate(X, y, X_embedded)   # for debugging, it will cost too much time
+		scores = {} # for saving time.
 		i_end_time = time.time()
 		res.append({'error': error, 'grad': grad, 'update': copy.deepcopy(update),
 		            'Y': X_embedded, 'scores': scores, 'i_iter_duration': i_end_time-i_start_time})

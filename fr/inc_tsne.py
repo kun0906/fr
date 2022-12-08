@@ -1465,7 +1465,7 @@ class INC_TSNE(BaseEstimator):
 		self._update_data = (res1, res2)
 		return X_embedded
 
-	def update(self, X, y=None, X_batch=None, y_batch=None, n_iter=1, is_recompute_P=False, skip_num_points=0):
+	def update(self, X, y=None, X_batch=None, y_batch=None, n_iter=(0, 1), is_recompute_P=False, skip_num_points=0):
 
 		# Update distances for the new batch data: X_batch
 		st = time.time()
@@ -1510,7 +1510,9 @@ class INC_TSNE(BaseEstimator):
 			X_embedded = np.concatenate([self.embedding_, X_batch_embedded], axis=0)
 		elif self.update_init == 'weighted':
 			# w = squareform(self.P)[-n_batch:, :-n_batch]  # p_ij = (p_i|j + p_j|i)/(2N)
-			w = self.C_P[-n_batch:, :-n_batch]  # normalized C_P: p_j|i
+			w = self.C_P[-n_batch:, :-n_batch]
+			w_sum = np.sum(w, axis=1).reshape((-1, 1))
+			w = w/w_sum  # normalize to 0-1 # normalized C_P: p_j|i
 			Y = self.embedding_
 			print(self.C_P.shape, n_batch, self.embedding_.shape)
 			X_batch_embedded = np.dot(w, Y).astype(np.float32)

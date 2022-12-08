@@ -3,6 +3,7 @@
 # Author: kun.bj@outlook.com
 
 import collections
+import copy
 import os
 import pickle
 import shutil
@@ -13,6 +14,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.utils
+from sklearn.metrics import pairwise_distances
 
 from _base import evaluate, trustworthiness
 from datasets import gen_data
@@ -236,282 +238,454 @@ def _show_update_data(tsne, inc_tsne, out_dir, idx=0):
 
 
 @timer
-def main(args):
-	is_show = True
+def main(args_raw):
+	is_show = False
 	random_state = 42
-	res = {'tsne': [], 'inc_tsne': []}
-	data_name = args['data_name']
+	data_name = args_raw['data_name']
 	"""1. Generate dataset 
 		
 	"""
-	X, y = gen_data.gen_data(n=args['n'], data_type=args['data_name'], is_show=False,
-	                         with_noise=False, random_state=random_state)
-	X, y = sklearn.utils.shuffle(X, y, random_state=random_state)
-	print(f'X.shape: {X.shape}, y: {collections.Counter(y)}')
-	print(np.quantile(X, q=[0, 0.25, 0.5, 0.75, 1.0], axis=0))
+	X_raw, y_raw = gen_data.gen_data(n=args_raw['n'], data_type=args_raw['data_name'], is_show=True,
+	                                 with_noise=False, random_state=random_state)
+	X_raw, y_raw = sklearn.utils.shuffle(X_raw, y_raw, random_state=random_state)
+	print(f'X.shape: {X_raw.shape}, y: {collections.Counter(y_raw)}')
+	print(np.quantile(X_raw, q=[0, 0.25, 0.5, 0.75, 1.0], axis=0))
 
-	if args['data_name'] == 'mnist':
-		indices = np.where((y % 2 == 0) & (y > 0))[0]
-		X = X[indices]
-		y = y[indices]
+	if args_raw['data_name'] == 'mnist':
+		indices = np.where((y_raw % 2 == 0) & (y_raw > 0))[0]
+		X_raw = X_raw[indices]
+		y_raw = y_raw[indices]
 
-	n, d = X.shape
-	n_iter = args['n_iter']
-	init_percent = 0.9
-	n_init = int(np.round(n * init_percent))  # the total number of initial training data size.
-	n_init_iter = int(np.round(n_iter * 1.0))  # the total number of initial iterations
-	n1 = int(np.round(n_init_iter * (1 / 4)))  # 250:750 = 1:3
-	args['init_iters'] = (n1, n_init_iter - n1)
+	n, d = X_raw.shape
 
-	batch_percent = 1.0
-	bs = int(np.round((n - n_init) * batch_percent))  # bs is 10% of (n-n_init)
-	each_iter = int(0.5 * n_iter)  # int((n_iter - n_init_iter) * batch_percent)  # floor
-	n1 = int(np.round(each_iter * (1 / 4)))  # 250:750 = 1:3
-	print(f'n1: {np.round(each_iter * (1 / 4))}')
-	if n1 <= 0 or each_iter - n1 <= 0:
-		raise ValueError(f'n_iteration {n_iter} is too small!')
-	args['update_iters'] = (n1, each_iter - n1)  # when i%5 != 0, learning stage 1 and 2
-	sub_dir = '|'.join([str(args['init_iters']), str(args['update_iters'])])
-	out_dir = os.path.join(args['out_dir'], sub_dir)
-	if os.path.exists(out_dir):
-		shutil.rmtree(out_dir)
-	print(f'n: {n}, n_init: {n_init}, bs: {bs}, args: {args}')
+	res_list = []
+	for init_percent in [0.1, 0.3, 0.5, 0.7, 0.9]:
+		res = {'tsne': [], 'inc_tsne': []}
+		X, y = copy.deepcopy(X_raw), copy.deepcopy(y_raw)
+		args = copy.deepcopy(args_raw)
+		n_iter = args_raw['n_iter']
+		n_init = int(np.round(n * init_percent))  # the total number of initial training data size.
+		args['perplexity'] = min(args['perplexity'], n_init - 1)
+		n_init_iter = int(np.round(n_iter * 1.0))  # the total number of initial iterations
+		n1 = int(np.round(n_init_iter * (1 / 4)))  # 250:750 = 1:3
+		args['init_iters'] = (n1,n_init_iter - n1)
 
-	"""2. Get the initial fitting results for TSNE and INC_TSNE
-	"""
-	# Incremental TSNE
-	Y_update_init = args['update_init']
-	tsne = TSNE(perplexity=args['perplexity'], method=args['method'], n_iter=n_iter,
-	            _EXPLORATION_N_ITER=int(np.round(n_init_iter * (1 / 4))),
-	            random_state=random_state, verbose=0)
-	inc_tsne = INC_TSNE(perplexity=args['perplexity'], method=args['method'], update_init=args['update_init'],
-	                    n_iter=n_iter, init_iters=args['init_iters'], update_iters=args['update_iters'],
-	                    random_state=random_state, is_last_batch=False, verbose=0)
+		# batch_percent = 1.0
+		# bs = int(np.round((n - n_init) * batch_percent))  # bs is 10% of (n-n_init)
+		# each_iter = int(0.5 * n_iter)  # use few iterations for online update
+		# n1 = int(np.round(each_iter * (1 / 4)))  # 250:750 = 1:3
+		# # print(f'n1: {n1}')
+		# if n1 <= 0 or each_iter - n1 <= 0:
+		# 	raise ValueError(f'n_iteration {n_iter} is too small!')
+		# args['update_iters'] = (n1, n_iter - n1)  # when i%5 != 0, learning stage 1 and 2
+		args['update_iters'] = (0, 1)
+		bs = n- n_init
+		sub_dir = '|'.join([str(init_percent), str(args['init_iters']), str(args['update_iters'])])
+		out_dir = os.path.join(args['out_dir'], sub_dir)
+		if os.path.exists(out_dir):
+			shutil.rmtree(out_dir)
+		print(f'n: {n}, n_init: {n_init}, bs: {bs}, args: {args}')
 
-	X_pre, X, y_pre, y = sklearn.model_selection.train_test_split(X, y, train_size=n_init, stratify=y,
-	                                                              random_state=random_state, shuffle=True)
-	# Incremental TSNE
-	st = time.time()
-	inc_tsne.fit(X_pre, y_pre)
-	ed = time.time()
-	inc_tsne_duration = ed - st
-	inc_tsne.n_iter_ += 1  # start for 0
-	print(f'inc_tsne initial fitting with {inc_tsne.n_iter_} iterations: {fmt(inc_tsne_duration)}s')
-	scores = evaluate(X_pre, y_pre, inc_tsne.embedding_)
-	res['inc_tsne'].append((inc_tsne_duration, inc_tsne.n_iter_, scores))
-	X_inc_tsne = inc_tsne.embedding_
-	# TSNE
-	st = time.time()
-	tsne.fit(X_pre, y_pre)
-	ed = time.time()
-	tsne_duration = ed - st
-	tsne.n_iter_ += 1  # start for 0
-	print(f'tsne initial fitting with {inc_tsne.n_iter_} iterations: {fmt(tsne_duration)}s')
-	scores = evaluate(X_pre, y_pre, tsne.embedding_)
-	res['tsne'].append((tsne_duration, tsne.n_iter_, scores))
-	X_tsne = tsne.embedding_
+		"""2. Get the initial fitting results for TSNE and INC_TSNE
+		"""
+		# Incremental TSNE
+		Y_update_init = args['update_init']
+		tsne = TSNE(perplexity=args['perplexity'], method=args['method'], n_iter=n_iter,
+		            _EXPLORATION_N_ITER=int(np.round(n_iter * (1 / 4))),
+		            random_state=random_state, verbose=0)
+		inc_tsne = INC_TSNE(perplexity=args['perplexity'], method=args['method'], update_init=args['update_init'],
+		                    n_iter=n_iter, init_iters=args['init_iters'], update_iters= args['update_iters'],
+		                    random_state=random_state, is_last_batch=False, verbose=0)
 
-	trust_diff = trustworthiness(X_tsne, X_inc_tsne, n_neighbors=5, metric='euclidean')
-	res['trust_diff'] = [trust_diff]
-	if is_show:
-		show_embedded_data(tsne, inc_tsne, res, X_pre, y_pre, args, out_dir, idx=0)
-
-		# save update data
-		_show_update_data(tsne, inc_tsne, out_dir, idx=0)
-
-		show_detail_flg = False
-		if show_detail_flg:
-			# show each update iteration
-			idx_batch = 0
-			figs = []
-			for learning_phase in [0, 1]:  # two phases of gradient updates with/without early_exaggeration
-				# _n = min(5, len(tsne._update_data[learning_phase]), len(inc_tsne._update_data[learning_phase]))
-				_n = max(10, len(tsne._update_data[learning_phase]), len(inc_tsne._update_data[learning_phase]))
-				for j in range(_n):
-					fig = _show_embedded_data(tsne, inc_tsne, X_pre, y_pre, args, out_dir, idx=idx_batch,
-					                          learning_phase=learning_phase, jth_iter=j)
-					figs.append(fig)
-			animate(figs, out_file=os.path.join(out_dir, 'batch', f'{idx_batch}.mp4'))
-
-	"""3. Get the results for each batch
-	"""
-	res_file = os.path.join(out_dir, 'res.out')
-	i = 1
-	batch_figs = []
-	_n_accumulated_iters = n_init_iter
-	while X.shape[0] > 0:
-		if bs < X.shape[0]:
-			X_batch, X, y_batch, y = sklearn.model_selection.train_test_split(X, y, train_size=bs,
-			                                                                  random_state=random_state, shuffle=True)
-			n_update_iter = args['update_iters']
-		else:
-			X_batch, X, y_batch, y = X, np.zeros((0,)), y, np.zeros((0,))
-			left_iters = 1  # 250:750 = 1:3
-			_iters = int(np.round(left_iters * (1 / 4)))
-			n_update_iter = (_iters, left_iters - _iters)
-		if i > 0 and i % 5 == 0:
-			is_recompute_P = True
-		else:
-			is_recompute_P = False
-		# is_recompute_P = True   # always recompute P from scratch
-		_n_accumulated_iters += sum(n_update_iter)
-		print(f'{i}-th batch, X_batch: {X_batch.shape}, y_batch: {collections.Counter(y_batch)}, '
-		      f'is_recompute_P: {is_recompute_P}, update_iters: {n_update_iter}, '
-		      f'accumulated_iters: {_n_accumulated_iters}')
-
-		# 3.1 Incremental TSNE
+		X_pre, X, y_pre, y = sklearn.model_selection.train_test_split(X, y, train_size=n_init, stratify=y,
+		                                                              random_state=random_state, shuffle=True)
+		# Incremental TSNE
 		st = time.time()
-		inc_tsne.update(X_pre, y_pre, X_batch, y_batch, n_update_iter, is_recompute_P)
+		inc_tsne.fit(X_pre, y_pre)
 		ed = time.time()
-		# inc_tsne_duration = res['inc_tsne'][-1][0] + (ed - st)
-		inc_tsne_duration = (ed - st)
-		inc_tsne_n_iter_ = inc_tsne.n_iter_ + 1 if sum(n_update_iter) > 0 else 0  # start for 0
-		X_pre = np.concatenate([X_pre, X_batch], axis=0)
-		y_pre = np.concatenate([y_pre, y_batch], axis=0)
+		inc_tsne_duration = ed - st
+		inc_tsne.n_iter_ += 1  # start for 0
+		print(f'inc_tsne initial fitting with {inc_tsne.n_iter_} iterations: {fmt(inc_tsne_duration)}s')
 		scores = evaluate(X_pre, y_pre, inc_tsne.embedding_)
-		res['inc_tsne'].append((inc_tsne_duration, inc_tsne_n_iter_, scores))
+		res['inc_tsne'].append((inc_tsne_duration, inc_tsne.n_iter_, scores))
 		X_inc_tsne = inc_tsne.embedding_
-
-		# 3.2 Batch TSNE
+		# TSNE
 		st = time.time()
 		tsne.fit(X_pre, y_pre)
 		ed = time.time()
 		tsne_duration = ed - st
+		tsne.n_iter_ += 1  # start for 0
+		print(f'tsne initial fitting with {inc_tsne.n_iter_} iterations: {fmt(tsne_duration)}s')
 		scores = evaluate(X_pre, y_pre, tsne.embedding_)
-		tsne.n_iter_ = tsne.n_iter_ + 1 if tsne.n_iter_ > 0 else 0  # start for 0
 		res['tsne'].append((tsne_duration, tsne.n_iter_, scores))
 		X_tsne = tsne.embedding_
 
 		trust_diff = trustworthiness(X_tsne, X_inc_tsne, n_neighbors=5, metric='euclidean')
-		res['trust_diff'].append(trust_diff)
+		res['trust_diff'] = [trust_diff]
 		if is_show:
-			f = os.path.join(out_dir, 'batch', f'batch_{i}.png')
-			nrows, ncols = 1, 2
-			fig, ax = plt.subplots(nrows, ncols, figsize=(10, 5), )  # width, height
-			print(f'figure number: {plt.gcf().number}, {fig.number}')
-			# ax[0].scatter(X_tsne[:, 0], X_tsne[:, 1], c=y_pre)
-			n_batch = X_batch.shape[0]
-			# generate a list of markers and another of colors
-			markers = ["*", "v", "^", "<", ">", "1", '2', '3', '4', '8', 's', 'S', 'p', 'P']
-			# colors = get_colors()
-			colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k', 'brown', 'tab:red', 'tab:green', 'tab:blue', 'table:yellow']
-			batch_colors = [colors[v.item()] for v in y_pre[-n_batch:]]
-			batch_markers = [markers[v.item()] for v in y_pre[-n_batch:]]
-			ax[0].scatter(X_tsne[:-n_batch, 0], X_tsne[:-n_batch, 1], c=y_pre[:-n_batch])
-			# ax[0].scatter(X_tsne[-n_batch:, 0], X_tsne[-n_batch:, 1], c=batch_colors, marker=batch_markers)
-			# for _j in range(X_tsne.shape[0]-n_batch):
-			# 	idx_label = y_pre[_j].item()
-			# 	ax[0].scatter(X_tsne[_j, 0], X_tsne[_j, 1], marker=markers[idx_label])
-			for _j in range(n_batch):
-				ax[0].scatter(X_tsne[(-n_batch + _j), 0], X_tsne[(-n_batch + _j), 1], c=batch_colors[_j],
-				              marker=batch_markers[_j])
-			tsne_duration, tsne_iters, scores = res['tsne'][-1]
-			trust = scores['trustworthiness']
-			acc = scores['acc_1nn']
-			ax[0].set_title(f'TSNE on {data_name}{X_pre.shape} takes {fmt(tsne_duration)}s,\n'
-			                f'{tsne_iters} iterations\n'
-			                f'trustworthiness:{fmt(trust)}, acc_1nn: {fmt(acc)}')
+			show_embedded_data(tsne, inc_tsne, res, X_pre, y_pre, args, out_dir, idx=0)
 
-			# ax[1].scatter(X_inc_tsne[:, 0], X_inc_tsne[:, 1], c=y_pre)
-			ax[1].scatter(X_inc_tsne[:-n_batch, 0], X_inc_tsne[:-n_batch, 1], c=y_pre[:-n_batch])
-			# ax[1].scatter(X_inc_tsne[-n_batch:, 0], X_inc_tsne[-n_batch:, 1], c=batch_colors, marker=batch_markers)
-			for _j in range(n_batch):
-				ax[1].scatter(X_inc_tsne[(-n_batch + _j), 0], X_inc_tsne[(-n_batch + _j), 1], c=batch_colors[_j],
-				              marker=batch_markers[_j])
-			inc_tsne_duration, inc_tsne_iters, scores = res['inc_tsne'][-1]
-			trust = scores['trustworthiness']
-			acc = scores['acc_1nn']
-			ax[1].set_title(f'INC_TSNE({Y_update_init}) on batch_{i}{X_batch.shape} takes {fmt(inc_tsne_duration)}s,\n'
-			                f'{inc_tsne_iters} iterations, trust_diff: {fmt(trust_diff)}\n'
-			                f'trustworthiness:{fmt(trust)}, acc_1nn: {fmt(acc)}')
-			# fig.suptitle(f'INC_TSNE X: batch_{batch}')
+			# save update data
+			_show_update_data(tsne, inc_tsne, out_dir, idx=0)
+
+			show_detail_flg = False
+			if show_detail_flg:
+				# show each update iteration
+				idx_batch = 0
+				figs = []
+				for learning_phase in [0, 1]:  # two phases of gradient updates with/without early_exaggeration
+					# _n = min(5, len(tsne._update_data[learning_phase]), len(inc_tsne._update_data[learning_phase]))
+					_n = max(10, len(tsne._update_data[learning_phase]), len(inc_tsne._update_data[learning_phase]))
+					for j in range(_n):
+						fig = _show_embedded_data(tsne, inc_tsne, X_pre, y_pre, args, out_dir, idx=idx_batch,
+						                          learning_phase=learning_phase, jth_iter=j)
+						figs.append(fig)
+				animate(figs, out_file=os.path.join(out_dir, 'batch', f'{idx_batch}.mp4'))
+
+		"""3. Get the results for each batch
+		"""
+		res_file = os.path.join(out_dir, 'res.out')
+		i = 1
+		batch_figs = []
+		_n_accumulated_iters = n_init_iter
+		while X.shape[0] > 0:
+			if bs < X.shape[0]:
+				X_batch, X, y_batch, y = sklearn.model_selection.train_test_split(X, y, train_size=bs,
+				                                                                  random_state=random_state,
+				                                                                  shuffle=True)
+				n_update_iter = args['update_iters']
+			else:
+				X_batch, X, y_batch, y = X, np.zeros((0,)), y, np.zeros((0,))
+				# left_iters = 10  # 250:750 = 1:3
+				# _iters = int(np.round(left_iters * (1 / 4)))
+				# n_update_iter = (_iters, left_iters - _iters)
+				n_update_iter = args['update_iters']
+			if i > 0 and i % 5 == 0:
+				is_recompute_P = True
+			else:
+				is_recompute_P = False
+			# is_recompute_P = True   # always recompute P from scratch
+			_n_accumulated_iters += sum(n_update_iter)
+			print(f'{i}-th batch, X_batch: {X_batch.shape}, y_batch: {collections.Counter(y_batch)}, '
+			      f'is_recompute_P: {is_recompute_P}, update_iters: {n_update_iter}, '
+			      f'accumulated_iters: {_n_accumulated_iters}')
+
+			# 3.1 Incremental TSNE
+			st = time.time()
+			inc_tsne.update(X_pre, y_pre, X_batch, y_batch, n_update_iter, is_recompute_P)
+			ed = time.time()
+			# inc_tsne_duration = res['inc_tsne'][-1][0] + (ed - st)
+			inc_tsne_duration = (ed - st)
+			inc_tsne_n_iter_ = inc_tsne.n_iter_ + 1 if sum(n_update_iter) > 0 else 0  # start for 0
+			X_pre = np.concatenate([X_pre, X_batch], axis=0)
+			y_pre = np.concatenate([y_pre, y_batch], axis=0)
+			scores = evaluate(X_pre, y_pre, inc_tsne.embedding_)
+			res['inc_tsne'].append((inc_tsne_duration, inc_tsne_n_iter_, scores))
+			X_inc_tsne = inc_tsne.embedding_
+
+			# 3.2 Batch TSNE
+			st = time.time()
+			tsne.fit(X_pre, y_pre)
+			ed = time.time()
+			tsne_duration = ed - st
+			scores = evaluate(X_pre, y_pre, tsne.embedding_)
+			tsne.n_iter_ = tsne.n_iter_ + 1 if tsne.n_iter_ > 0 else 0  # start for 0
+			res['tsne'].append((tsne_duration, tsne.n_iter_, scores))
+			X_tsne = tsne.embedding_
+
+			trust_diff = trustworthiness(X_tsne, X_inc_tsne, n_neighbors=5, metric='euclidean')
+			res['trust_diff'].append(trust_diff)
+			if True:
+				f = os.path.join(out_dir, 'batch', f'batch_{i}.png')
+				nrows, ncols = 1, 2
+				fig, ax = plt.subplots(nrows, ncols, figsize=(10, 5), )  # width, height
+				print(f'figure number: {plt.gcf().number}, {fig.number}')
+				# ax[0].scatter(X_tsne[:, 0], X_tsne[:, 1], c=y_pre)
+				n_batch = X_batch.shape[0]
+				# generate a list of markers and another of colors
+				markers = ["*", "v", "^", "<", ">", "1", '2', '3', '4', '8', 's', 'S', 'p', 'P']
+				# colors = get_colors()
+				colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k', 'brown', 'tab:red', 'tab:green', 'tab:blue',
+				          'table:yellow']
+				batch_colors = [colors[v.item()] for v in y_pre[-n_batch:]]
+				batch_markers = [markers[v.item()] for v in y_pre[-n_batch:]]
+				ax[0].scatter(X_tsne[:-n_batch, 0], X_tsne[:-n_batch, 1], c=y_pre[:-n_batch])
+				# ax[0].scatter(X_tsne[-n_batch:, 0], X_tsne[-n_batch:, 1], c=batch_colors, marker=batch_markers)
+				# for _j in range(X_tsne.shape[0]-n_batch):
+				# 	idx_label = y_pre[_j].item()
+				# 	ax[0].scatter(X_tsne[_j, 0], X_tsne[_j, 1], marker=markers[idx_label])
+				for _j in range(n_batch):
+					ax[0].scatter(X_tsne[(-n_batch + _j), 0], X_tsne[(-n_batch + _j), 1], c=batch_colors[_j],
+					              marker=batch_markers[_j])
+				tsne_duration, tsne_iters, scores = res['tsne'][-1]
+				trust = scores['trustworthiness']
+				acc = scores['acc_1nn']
+				ax[0].set_title(f'TSNE on {data_name}{X_pre.shape} takes {fmt(tsne_duration)}s,\n'
+				                f'{tsne_iters} iterations\n'
+				                f'trustworthiness:{fmt(trust)}, acc_1nn: {fmt(acc)}')
+
+				# ax[1].scatter(X_inc_tsne[:, 0], X_inc_tsne[:, 1], c=y_pre)
+				ax[1].scatter(X_inc_tsne[:-n_batch, 0], X_inc_tsne[:-n_batch, 1], c=y_pre[:-n_batch])
+				# ax[1].scatter(X_inc_tsne[-n_batch:, 0], X_inc_tsne[-n_batch:, 1], c=batch_colors, marker=batch_markers)
+				for _j in range(n_batch):
+					ax[1].scatter(X_inc_tsne[(-n_batch + _j), 0], X_inc_tsne[(-n_batch + _j), 1], c=batch_colors[_j],
+					              marker=batch_markers[_j])
+				inc_tsne_duration, inc_tsne_iters, scores = res['inc_tsne'][-1]
+				trust = scores['trustworthiness']
+				acc = scores['acc_1nn']
+				ax[1].set_title(
+					f'INC_TSNE({Y_update_init}) on batch_{i}{X_batch.shape} takes {fmt(inc_tsne_duration)}s,\n'
+					f'{inc_tsne_iters} iterations, trust_diff: {fmt(trust_diff)}\n'
+					f'trustworthiness:{fmt(trust)}, acc_1nn: {fmt(acc)}')
+				# fig.suptitle(f'INC_TSNE X: batch_{batch}')
+				plt.tight_layout()
+				check_path(os.path.dirname(f))
+				plt.savefig(f, dpi=600, bbox_inches='tight')
+				if is_show: plt.show()
+				plt.close()
+				batch_figs.append(f)
+
+			# _show_update_data(tsne, inc_tsne, out_dir, idx=i)
+
+			# time components: previous_time + current_(update_dist_time + update_P_time + concat_Y_time + update_Y_time)
+			inc_tsne_duration_components = '+'.join(fmt([res['inc_tsne'][-2][0]] + list(inc_tsne.update_res['time'])))
+			tsne_duration_components = '+'.join(fmt([0] + list(tsne.fit_res['time'])))
+			inc_tsne_kl = ' - '.join([','.join(fmt(list(v))) for v in inc_tsne.update_res['kl_divergence']])
+			tsne_kl = ' - '.join([','.join(fmt(list(v))) for v in tsne.fit_res['kl_divergence']])
+			print(f'batch_{i},  tsne({tsne_iters}): {fmt(tsne_duration)}s ({tsne_duration_components}, kl: {tsne_kl}) '
+			      f'vs. \n\t'
+			      f'inc_tsne({inc_tsne_iters}): {fmt(inc_tsne_duration)}s ({inc_tsne_duration_components}, '
+			      f'kl: {inc_tsne_kl}).')
+			i += 1
+
+		"""4. Save and plot results
+		"""
+		# Save results to disk
+		res['data'] = (X_pre, y_pre)
+		res['embedding'] = (tsne.embedding_, inc_tsne.embedding_)
+		print(res_file)
+		with open(res_file, 'wb') as f:
+			pickle.dump(res, f)
+
+		# Plot final results
+		for key in ['duration', 'iteration', 'trustworthiness', 'acc_1nn']:
+			x = range(len(res['tsne'][1:]))
+			# tsne
+			if key == 'duration':
+				y = [dur for dur, iters, scores in res['tsne']][1:]
+				y_label = 'Duration'
+			elif key == 'iteration':
+				y = [iters for dur, iters, scores in res['tsne']][1:]
+				y_label = 'Iteration'
+			else:
+				y = [scores[key] for dur, iters, scores in res['tsne']][1:]
+				y_label = 'Trustworthiness' if key == 'trustworthiness' else 'ACC_1NN'
+			plt.plot(x, y, '-ob', label='tsne')
+			# inc_tsne
+			if key == 'duration':
+				y = [dur for dur, iters, scores in res['inc_tsne']][1:]
+			elif key == 'iteration':
+				y = [iters for dur, iters, scores in res['inc_tsne']][1:]
+			else:
+				y = [scores[key] for dur, iters, scores in res['inc_tsne']][1:]
+			plt.plot(x, y, '-+g', label='inc_tsne')
+			if key == 'trustworthiness':
+				y = [v for v in res['trust_diff']][1:]
+				plt.plot(x, y, '-+c', label='trust_diff')
+			plt.xlabel(f'Batch')
+			plt.ylabel(y_label)
+			plt.title(f'TSNE vs. INC_TSNE ({data_name}): {y_label}')
+			plt.legend()
 			plt.tight_layout()
-			check_path(os.path.dirname(f))
+			f = os.path.join(out_dir, f'TSNE_vs_INCTSNE-{y_label}.png')
 			plt.savefig(f, dpi=600, bbox_inches='tight')
-			plt.show()
+			if is_show: plt.show()
 			plt.close()
-			batch_figs.append(f)
 
-		# _show_update_data(tsne, inc_tsne, out_dir, idx=i)
+		# Make animation with all batches
+		out_file = os.path.join(out_dir, 'all.mp4')
+		animate(batch_figs, out_file)
+		print(out_file)
 
-		# time components: previous_time + current_(update_dist_time + update_P_time + concat_Y_time + update_Y_time)
-		inc_tsne_duration_components = '+'.join(fmt([res['inc_tsne'][-2][0]] + list(inc_tsne.update_res['time'])))
-		tsne_duration_components = '+'.join(fmt([0] + list(tsne.fit_res['time'])))
-		inc_tsne_kl = ' - '.join([','.join(fmt(list(v))) for v in inc_tsne.update_res['kl_divergence']])
-		tsne_kl = ' - '.join([','.join(fmt(list(v))) for v in tsne.fit_res['kl_divergence']])
-		print(f'batch_{i},  tsne({tsne_iters}): {fmt(tsne_duration)}s ({tsne_duration_components}, kl: {tsne_kl}) '
-		      f'vs. \n\t'
-		      f'inc_tsne({inc_tsne_iters}): {fmt(inc_tsne_duration)}s ({inc_tsne_duration_components}, '
-		      f'kl: {inc_tsne_kl}).')
-		i += 1
 
-	"""4. Save and plot results
-	"""
-	# Save results to disk
-	print(res_file)
-	with open(res_file, 'wb') as f:
-		pickle.dump(res, f)
+def show_init_params(data_name='2gaussians', perplexity=30, data_size=100, update_str='(25, 75)|(25, 75)', is_show=True):
+	init_percents = [0.1, 0.3, 0.5, 0.7, 0.9]
+	cols = 5
+	fig, axes = plt.subplots(1, cols, figsize=(15, 4))  # (width, height)
+	axes = axes.reshape((1, cols))
+	# mu_score = 0
+	for i, metric_name in enumerate(
+			['trustworthiness', 'spearman', 'pearson', 'neighborhood_hit', 'normalized_stress']):
+		tsne_res = []
+		inc_tsne_res = []
+		for init_percent in init_percents:
+			out_dir = f'out/{data_name}/{data_size}/exact|{perplexity}|weighted/{init_percent}|{update_str}'
+			res_file = os.path.join(out_dir, 'res.out')
+			with open(res_file, 'rb') as f:
+				res = pickle.load(f)
+			if metric_name == 'spearman':
+				v1 = res['tsne'][-1][-1][metric_name].correlation
+				v2 = res['inc_tsne'][-1][-1][metric_name].correlation
+			elif metric_name == 'pearson':
+				v1 = res['tsne'][-1][-1][metric_name].statistic
+				v2 = res['inc_tsne'][-1][-1][metric_name].statistic
+			else:
+				v1 = res['tsne'][-1][-1][metric_name]
+				v2 = res['inc_tsne'][-1][-1][metric_name]
 
-	# Plot final results
-	for key in ['duration', 'iteration', 'trustworthiness', 'acc_1nn']:
-		x = range(len(res['tsne'][1:]))
-		# tsne
-		if key == 'duration':
-			y = [dur for dur, iters, scores in res['tsne']][1:]
-			y_label = 'Duration'
-		elif key == 'iteration':
-			y = [iters for dur, iters, scores in res['tsne']][1:]
-			y_label = 'Iteration'
-		else:
-			y = [scores[key] for dur, iters, scores in res['tsne']][1:]
-			y_label = 'Trustworthiness' if key == 'trustworthiness' else 'ACC_1NN'
-		plt.plot(x, y, '-ob', label='tsne')
-		# inc_tsne
-		if key == 'duration':
-			y = [dur for dur, iters, scores in res['inc_tsne']][1:]
-		elif key == 'iteration':
-			y = [iters for dur, iters, scores in res['inc_tsne']][1:]
-		else:
-			y = [scores[key] for dur, iters, scores in res['inc_tsne']][1:]
-		plt.plot(x, y, '-+g', label='inc_tsne')
-		if key == 'trustworthiness':
-			y = [v for v in res['trust_diff']][1:]
-			plt.plot(x, y, '-+c', label='trust_diff')
-		plt.xlabel(f'Batch')
-		plt.ylabel(y_label)
-		plt.title(f'TSNE vs. INC_TSNE ({data_name}): {y_label}')
-		plt.legend()
-		plt.tight_layout()
-		f = os.path.join(out_dir, f'TSNE_vs_INCTSNE-{y_label}.png')
-		plt.savefig(f, dpi=600, bbox_inches='tight')
-		# plt.show()
-		plt.close()
+			tsne_res.append(v1)
+			inc_tsne_res.append(v2)
 
-	# Make animation with all batches
-	out_file = os.path.join(out_dir, 'all.mp4')
-	animate(batch_figs, out_file)
-	print(out_file)
+		# plt.plot(init_percents, tsne_res, '-+b', label='tsne')
+		# plt.plot(init_percents, inc_tsne_res, '-og', label='inc_tsne')
+		# plt.xlabel(f'Initial percentage of data')
+		# plt.ylabel(f'{metric_name}')
+		# plt.title(f'{data_name}: {metric_name}')
+		# plt.legend()
+		# plt.tight_layout()
+		# f = os.path.join(out_dir, f'TSNE_vs_INCTSNE-inits-{metric_name}.png')
+		# plt.savefig(f, dpi=600, bbox_inches='tight')
+		# if is_show: plt.show()
+		# plt.close()
+
+		axes[0, i].plot(init_percents, tsne_res, '-+b', label='tsne')
+		axes[0, i].plot(init_percents, inc_tsne_res, '-og', label='inc_tsne')
+		axes[0, i].set_xlabel(f'Initial percentage of data')
+		axes[0, i].set_ylabel(f'{metric_name}')
+		axes[0, i].set_title(f'{metric_name}')
+		axes[0, i].legend()
+	fig.suptitle(data_name)
+	plt.tight_layout()
+	f = os.path.join(out_dir, f'TSNE_vs_INCTSNE-inits.png')
+	print(f)
+	plt.savefig(f, dpi=600, bbox_inches='tight')
+	if is_show: plt.show()
+	plt.close()
+
+
+def show_avg_local_error(data_name='2gaussians', perplexity=30, data_size=100, update_str='(25, 75)|(25, 75)', is_show=True):
+	init_percents = [0.1, 0.3, 0.5, 0.7, 0.9]
+
+	fig, axes = plt.subplots(5, 4, figsize=(12, 15))  # (width, height)
+	for i, init_percent in enumerate(init_percents):
+		out_dir = f'out/{data_name}/{data_size}/exact|{perplexity}|weighted/{init_percent}|{update_str}'
+		res_file = os.path.join(out_dir, 'res.out')
+		with open(res_file, 'rb') as f:
+			res = pickle.load(f)
+		print(i, res_file)
+		X, y = res['data']
+		tsne_embedding, inc_tsne_embedding = res['embedding']
+
+		col = 0
+		for method_name, embedding in [('tsne', tsne_embedding), ('inc_tsne', inc_tsne_embedding)]:
+			n, _ = X.shape
+			dist_X = pairwise_distances(X, X)
+			# dist_Y = pairwise_distances(tsne_embedding, tsne_embedding)
+			dist_Y = pairwise_distances(embedding, embedding)
+
+			# plt.scatter(dist_X, dist_Y, c=dist_Y)
+			# plt.xlabel(f'distance X')
+			# plt.ylabel(f'distance Y')
+			# plt.title(f'Initial percentage:{init_percent}, {method_name}')
+			# # plt.legend()
+			# plt.tight_layout()
+			# f = os.path.join(out_dir, f'distance-{init_percent}-{method_name}.png')
+			# plt.savefig(f, dpi=600, bbox_inches='tight')
+			# if is_show: plt.show()
+			# plt.close()
+
+			axes[i, col + 0].scatter(dist_X, dist_Y)
+			axes[i, col + 0].set_xlabel('distance in $R^d$')
+			axes[i, col + 0].set_ylabel('distance in $R^2$')
+			pearson = res[method_name][-1][-1]['pearson'].statistic
+			spearman = res[method_name][-1][-1]['spearman'].correlation
+			if method_name == 'tsne':
+				axes[i, col + 0].set_title(f'{method_name}: pearson:{fmt(pearson)}')
+			else:
+				axes[i, col + 0].set_title(f'{method_name}({init_percent}): pearson:{fmt(pearson)}')
+			# plt.xlabel(f'distance X')
+			# plt.ylabel(f'distance Y')
+			# plt.title(f'Initial percentage:{init_percent}, {method_name}')
+
+			M_x = []
+			for _i in range(n):
+				mx = 0
+				max_x = max(dist_X[_i])
+				max_y = max(dist_Y[_i])
+				for _j in range(n):
+					if _i == _j: continue
+					mx += abs(dist_X[_i][_j] / max_x - dist_Y[_i][_j] / max_y)
+				M_x.append(1 / (n - 1) * mx)
+
+			# y_label = 'average local error'
+			# plt.scatter(embedding[:, 0], embedding[:, 1], c=M_x)
+			# # plt.plot(init_percents, inc_tsne_res, '-og', label='inc_tsne')
+			# plt.xlabel(f'Initial percentage of data')
+			# plt.ylabel(f'{y_label}')
+			# plt.title(f'{data_name}: Initial percentage: {init_percent}, {embedding.shape}, {method_name}')
+			# # plt.legend()
+			# plt.tight_layout()
+			# f = os.path.join(out_dir, f'{y_label}-{init_percent}-{method_name}.png')
+			# plt.savefig(f, dpi=600, bbox_inches='tight')
+			# if is_show: plt.show()
+			# plt.close()
+			train_time = res[method_name][-1][0]
+			axes[i, col + 1].set_title(f'{fmt(train_time)}s')
+			# https://matplotlib.org/stable/gallery/subplots_axes_and_figures/colorbar_placement.html
+			pcm = axes[i, col + 1].scatter(embedding[:, 0], embedding[:, 1], c=M_x)
+			fig.colorbar(pcm, ax=axes[i, col + 1])
+			col = 2
+
+	fig.suptitle(data_name)
+	plt.tight_layout()
+	y_label = 'average local error'
+	f = os.path.join(out_dir, f'{y_label}.png')
+	print(f)
+	plt.savefig(f, dpi=600, bbox_inches='tight')
+	if is_show: plt.show()
+	plt.close()
 
 
 if __name__ == '__main__':
-	# data_name = '2gaussians'
-	# data_name = '2circles'
-	# data_name = 's-curve'
-	# data_name = '5gaussians-5dims'
-	# data_name = '3gaussians-10dims'
-	n = 200
-	n_iter = 200
+
+	# # data_name = '1gaussian'
+	data_name = '2gaussians'
+	# # data_name = '2circles'
+	# # data_name = 's-curve'
+	# # data_name = '5gaussians-5dims'
+	data_name = '3gaussians-10dims'
+	perplexity = 30
+	data_size = 300 # 3000,
+	update_str = '(25, 75)|(0, 1)'
+	# show_init_params(data_name, perplexity, data_size, update_str= update_str, is_show=True)
+	# show_avg_local_error(data_name, perplexity, data_size, update_str= update_str, is_show=True)
+	# exit(0)
+
+	n = 300  # 2 clusters * n = 600 : 0.1* 600 = 60
+	n_iter = 100  # > 8 hours
 	args_lst = []
+	# """Case 0: 1circles
+	# 	It includes 1 clusters, and each has 500 data points in R^2.
+	# """
+	args = {'data_name': '1gaussian', 'n': n, 'n_iter': n_iter}
+	# args_lst.append(args)
+
+	# """Case 0: 2gaussians
+	# 	It includes 2 clusters, and each has 500 data points in R^2.
+	# """
+	args = {'data_name': '2gaussians', 'n': n, 'n_iter': n_iter}
+	args_lst.append(args)
+
 	# """Case 0: 2circles
 	# 	It includes 2 clusters, and each has 500 data points in R^2.
 	# """
 	args = {'data_name': '2circles', 'n': n, 'n_iter': n_iter}
-	# args_lst.append(args)
+	args_lst.append(args)
 	"""Case 1: 3gaussians-10dims
 		It includes 3 clusters, and each has 500 data points in R^10.
 	"""
 	args = {'data_name': '3gaussians-10dims', 'n': n, 'n_iter': n_iter}
-	# args_lst.append(args)
+	args_lst.append(args)
 	"""Case 2: mnist
 		It includes 10 clusters, and each has 500 data points in R^784.
 	"""
@@ -519,7 +693,7 @@ if __name__ == '__main__':
 	args_lst.append(args)
 	for args in args_lst:
 		for update_init in ['weighted']:  # 'Gaussian',
-			perplexity = 50
+			perplexity = 30
 			args['method'] = "exact"  # 'exact', "barnes_hut"
 			args['perplexity'] = perplexity
 			args['update_init'] = update_init
@@ -527,3 +701,8 @@ if __name__ == '__main__':
 			args['out_dir'] = os.path.join('out', args['data_name'], str(args['n']), sub_dir)
 			print(f'\n\nargs: {args}')
 			main(args)
+			try:
+				show_init_params(data_name=args['data_name'], perplexity=perplexity, data_size=n, update_str=update_str, is_show=True)
+				show_avg_local_error(data_name=args['data_name'], perplexity=perplexity, data_size=n,update_str=update_str,is_show=True)
+			except Exception as e:
+				print(e)

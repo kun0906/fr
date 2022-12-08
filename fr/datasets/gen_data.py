@@ -16,7 +16,7 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 	:return:
 	"""
 
-	np.random.seed(0)
+	np.random.seed(random_state)
 
 	# ============
 	# Generate datasets. We choose the size big enough to see the scalability
@@ -54,23 +54,30 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 
 	elif data_type == '1gaussian':
 		r = np.random.RandomState(seed=random_state)
-		X = r.multivariate_normal([0, 0], [[0.1, 0], [0, 0.1]], size=n_samples)
-		y = np.zeros((X.shape[0],))
+		X = r.multivariate_normal([0, 0], [[1, 0], [0, 1]], size=n_samples)
+		y = np.zeros((X.shape[0],), dtype=int)
 	elif data_type == '2gaussians':
 		r = np.random.RandomState(seed=random_state)
-		X1 = r.multivariate_normal([-0.5, 0], [[0.1, 0], [0, 0.1]], size=n_samples)
-		y1 = np.zeros((X1.shape[0],))
-		X2 = r.multivariate_normal([0.5, 0], [[0.1, 0], [0, 0.1]], size=n_samples)
-		y2 = np.ones((X2.shape[0],))
+		sigma1 = 1
+		X1 = r.multivariate_normal([-3, 0], [[sigma1, 0], [0, sigma1]], size=n_samples)
+		y1 = np.zeros((X1.shape[0],), dtype=int)
+		X2 = r.multivariate_normal([3, 0], [[sigma1, 0], [0, sigma1]], size=n_samples)
+		y2 = np.ones((X2.shape[0],), dtype=int)
 
 		X = np.concatenate([X1, X2], axis=0)
 		y = np.concatenate([y1, y2], axis=0)
+
+		# plt.scatter(X[:, 0], X[:, 1], c=y)
+		# plt.xlim([-6, 6])
+		# plt.ylim([-6, 6])
+		# if is_show: plt.show()
+		# plt.close()
 
 	elif data_type == '5gaussians':
 		r = np.random.RandomState(seed=random_state)
 		for i, mu in enumerate([[-2, 0], [2, 0], [0, -2], [0, 2], [0, 0]]):
 			X1 = r.multivariate_normal(mu, [[0.1, 0], [0, 0.1]], size=n_samples)
-			y1 = np.ones((X1.shape[0],)) * i
+			y1 = np.ones((X1.shape[0],), dtype=int) * i
 			if i == 0:
 				X = copy.deepcopy(X1)
 				y = copy.deepcopy(y1)
@@ -83,13 +90,14 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 		# for i, mu in enumerate([-5, 5, -3, 3, 0]):
 		# mu = np.asarray([mu] * 5)
 		# cov = np.asarray([cov] * 5)
-		n_clusters = 10
+		n_clusters = 5
 		for i in range(n_clusters):
-			mu = r.uniform(low=0, high=5, size=n_clusters)
-			cov = np.asarray([0.1] * n_clusters)
+			dim = 5
+			mu = r.uniform(low=0, high=5, size=dim)
+			cov = np.asarray([0.1] * dim)
 			cov = np.diag(np.array(cov))
 			X1 = r.multivariate_normal(mu, cov, size=n_samples)
-			y1 = np.ones((X1.shape[0],)) * i
+			y1 = np.ones((X1.shape[0],), dtype=int) * i
 
 			if i == 0:
 				X = copy.deepcopy(X1)
@@ -101,8 +109,9 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 		r = np.random.RandomState(seed=random_state)
 		n_clusters = 3
 		for i in range(n_clusters):
-			mu = r.uniform(low=0, high=5, size=n_clusters)
-			cov = np.asarray([0.3] * n_clusters)
+			dim = 10
+			mu = r.uniform(low=0, high=5, size=dim)
+			cov = np.asarray([0.3] * dim)
 			cov = np.diag(np.array(cov))
 			X1 = r.multivariate_normal(mu, cov, size=n_samples)
 			y1 = [i] * X1.shape[0]
@@ -121,8 +130,8 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 				y = np.concatenate([y, y1], axis=0)
 
 		if with_noise:
-			mu = r.uniform(low=10, high=12, size=n_clusters)
-			cov = np.asarray([0.1] * n_clusters)
+			mu = r.uniform(low=10, high=12, size=dim)
+			cov = np.asarray([0.1] * dim)
 			cov = np.diag(np.array(cov))
 			percent = 0.01
 			n_outliers = int(n_samples * percent)
@@ -139,7 +148,7 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 			rng = np.random.RandomState(seed=random_state)
 			X_noise = rng.multivariate_normal(mean=[2, 0], cov=np.asarray([[0.1, 0.0], [0.0, 0.1]]),
 			                                  size=n_noise_samples)
-			y_noise = np.asarray([2] * X_noise.shape[0])
+			y_noise = np.asarray([2] * X_noise.shape[0], dtype=int)
 
 			X = np.concatenate([X, X_noise], axis=0)
 			y = np.concatenate([y, y_noise], axis=0)
