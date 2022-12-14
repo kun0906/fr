@@ -105,8 +105,7 @@ def update_joint_probabilities(distances, desired_perplexity, old_C_P, old_C_S_P
 		C_P[:n, n:] = np.exp(-distances[:n, n:] * B_[:n, n:])  # top right exp(- dist * beta) for new data points
 		C_P[n:, :] = np.exp(-distances[n:, :] * B_[n:, :])  # bottom
 		S_ = np.repeat(old_C_S_Pi[np.newaxis, :], old_C_S_Pi.shape[0], 0).T  # old sum for each row
-		C_P[:n,
-		:n] = old_C_P * S_  # top left(previous C_P): rescale back to the original results with the previous sum.
+		C_P[:n,:n] = old_C_P * S_  # top left(previous C_P): rescale back to the original results with the previous sum.
 		print(np.max(np.exp(-distances * B_) - C_P))
 	else:
 		C_P = np.exp(-distances * B_)  # elementwise multiplication: It can be further optimized.
@@ -1218,7 +1217,7 @@ class INC_TSNE(BaseEstimator):
 		ed = time.time()
 		if self.verbose:
 			print(
-				"[t-SNE] KL divergence after %d iterations with early exaggeration: %f (%fs)"
+				"[inc t-SNE] KL divergence after %d iterations with early exaggeration: %f (%fs)"
 				% (it + 1, kl_divergence, ed - st)
 			)
 		# Learning schedule (part 2): disable early exaggeration and finish
@@ -1238,7 +1237,7 @@ class INC_TSNE(BaseEstimator):
 		ed = time.time()
 		if self.verbose:
 			print(
-				"[t-SNE] KL divergence after %d iterations: %f (%fs)"
+				"[inc t-SNE] KL divergence after %d iterations: %f (%fs)"
 				% (it + 1, kl_divergence, ed - st)
 			)
 

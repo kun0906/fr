@@ -251,12 +251,12 @@ def show_init_params(out_dir='out', data_name='2gaussians', perplexity=30, data_
                      update_str='(25, 75)|(25, 75)',
                      init_percents=[0.1, 0.3, 0.5, 0.7, 0.9, 0.999], random_states = [42],
                      method='exact', update_init='weighted', is_show=True):
-	cols = 5
-	fig, axes = plt.subplots(2, cols, figsize=(20, 10))  # (width, height)
-	# axes = axes.reshape((1, cols))
+	cols = 7
+	fig, axes = plt.subplots(1, cols, figsize=(20, 4))  # (width, height)
+	axes = axes.reshape((1, cols))
 	# mu_score = 0
 	for i, metric_name in enumerate(
-			['trustworthiness', 'spearman', 'pearson', 'neighborhood_hit', 'normalized_stress', 'perplexity', 'kl', 'time', 'init_time']):
+			['perplexity', 'trustworthiness', 'spearman', 'pearson', 'neighborhood_hit', 'normalized_stress', 'kl']):
 		tsne_res = []
 		inc_tsne_res = []
 		for init_percent in init_percents:
@@ -265,7 +265,6 @@ def show_init_params(out_dir='out', data_name='2gaussians', perplexity=30, data_
 			for random_state in random_states:
 				try:
 					out_dir_new = f'{out_dir}/{data_name}/{data_size}/{method}|{perplexity}|{update_init}|seed_{random_state}/{init_percent}|{update_str}'
-					out_dir_new = out_dir_new.replace(' ', '')
 					res_file = os.path.join(out_dir_new, 'res.out')
 					with open(res_file, 'rb') as f:
 						res = pickle.load(f)
@@ -282,12 +281,6 @@ def show_init_params(out_dir='out', data_name='2gaussians', perplexity=30, data_
 						print('bs(batch_size) < 1, so no online results.')
 						# skip this value.
 						continue
-				elif metric_name == 'time':
-					v1 = res['tsne'][-1][0]
-					v2 = res['inc_tsne'][-1][0]
-				elif metric_name == 'init_time':
-					v1 = res['tsne'][0][0]
-					v2 = res['inc_tsne'][0][0]
 				elif metric_name == 'kl':
 					v1 = res['tsne'][-1][3][metric_name]
 					v2 = res['inc_tsne'][-1][3][metric_name]
@@ -325,18 +318,16 @@ def show_init_params(out_dir='out', data_name='2gaussians', perplexity=30, data_
 		# axes[0, i].plot(init_percents[:m], inc_tsne_res, '-og', label='inc_tsne')
 		x = init_percents[:m]
 		y, yerr = zip(*tsne_res[:m])
-		i, j = divmod(i, cols)
-		axes[i, j].errorbar(x, y, yerr=yerr, color='b', marker='*', label='tsne', alpha=0.8, ecolor='r', lw=2, capsize=5, capthick=2)
+		axes[0, i].errorbar(x, y, yerr=yerr, color='b', marker='*', label='tsne', alpha=0.8, ecolor='r', lw=2, capsize=5, capthick=2)
 		y, yerr = zip(*inc_tsne_res[:m])
-		axes[i, j].errorbar(x, y, yerr=yerr, color='g', marker='o',label='inc_tsne', alpha=0.8, ecolor='m', lw=2, capsize=5, capthick=2)
-		axes[i, j].set_xlabel(f'Initial percentage of data')
-		axes[i, j].set_ylabel(f'{metric_name}')
-		axes[i, j].set_title(f'{metric_name}')
-		axes[i, j].legend()
-	f = os.path.join(out_dir_new, f'TSNE_vs_INCTSNE-inits.png')
-	fig.suptitle(f'{data_name}, X{X_shape}, n_iter({n_iter}), n_repeats({len(random_states)})\n{f}')
+		axes[0, i].errorbar(x, y, yerr=yerr, color='g', marker='o',label='inc_tsne', alpha=0.8, ecolor='m', lw=2, capsize=5, capthick=2)
+		axes[0, i].set_xlabel(f'Initial percentage of data')
+		axes[0, i].set_ylabel(f'{metric_name}')
+		axes[0, i].set_title(f'{metric_name}')
+		axes[0, i].legend()
+	fig.suptitle(f'{data_name}, X{X_shape}, n_iter({n_iter}), n_repeats({len(random_states)})')
 	plt.tight_layout()
-	# f = os.path.join(out_dir_new, f'TSNE_vs_INCTSNE-inits.png')
+	f = os.path.join(out_dir_new, f'TSNE_vs_INCTSNE-inits.png')
 	print(f)
 	check_path(os.path.dirname(f))
 	plt.savefig(f, dpi=600, bbox_inches='tight')
@@ -347,12 +338,12 @@ def show_init_params(out_dir='out', data_name='2gaussians', perplexity=30, data_
 @timer
 def show_avg_local_error(out_dir='out', data_name='2gaussians', perplexity=30, data_size=100,
                          update_str='(25, 75)|(25, 75)',
-                         init_percents=[0.1, 0.3, 0.5, 0.7, 0.9],  random_state = 100,
+                         init_percents=[0.1, 0.3, 0.5, 0.7, 0.9],  random_states = [42],
                          method='exact', update_init='weighted', is_show=True):
 	fig, axes = plt.subplots(len(init_percents), 8, figsize=(27, 20))  # (width, height)
 	for i, init_percent in enumerate(init_percents):
+		random_state = random_states[0]
 		out_dir_new = f'{out_dir}/{data_name}/{data_size}/{method}|{perplexity}|{update_init}|seed_{random_state}/{init_percent}|{update_str}'
-		out_dir_new = out_dir_new.replace(' ', '')
 		res_file = os.path.join(out_dir_new, 'res.out')
 		try:
 			with open(res_file, 'rb') as f:
@@ -466,12 +457,13 @@ def show_avg_local_error(out_dir='out', data_name='2gaussians', perplexity=30, d
 			# 	axes[i, col + 1].set_xlim([-25, 25])
 			# 	axes[i, col + 1].set_ylim([-20, 20])
 			col += 2
+
+	fig.suptitle(f'{data_name}, X{X_shape}, n_iter({n_iter})')
+	# rect=(left, bottom, right, top), default: (0, 0, 1, 1)
+	plt.tight_layout(rect=(0, 0, 1, 0.98))
 	y_label = 'average_local_error'
 	f = os.path.join(out_dir_new, f'{y_label}.png')
 	print(f)
-	fig.suptitle(f'{data_name}, X{X_shape}, n_iter({n_iter})\n{f}')
-	# rect=(left, bottom, right, top), default: (0, 0, 1, 1)
-	plt.tight_layout(rect=(0, 0, 1, 0.98))
 	check_path(os.path.dirname(f))
 	plt.savefig(f, dpi=600, bbox_inches='tight')
 	if is_show: plt.show()
@@ -526,7 +518,6 @@ def main(args_raw):
 			continue
 		sub_dir = '|'.join([str(init_percent), str(args['init_iters']), str(args['update_iters'])])
 		out_dir = os.path.join(args['out_dir'], sub_dir)
-		out_dir = out_dir.replace(' ', '')
 		if os.path.exists(out_dir):
 			shutil.rmtree(out_dir)
 		print(f'n: {n}, n_init: {n_init}, bs: {bs}, args: {args}')
@@ -561,8 +552,7 @@ def main(args_raw):
 		# 	print(f'X0:{X0.shape}, y0:{y0.shape}, indices0:{indices0.shape}')
 		# continue
 		X_pre, X, y_pre, y = X[:n_init, :], X[n_init:, :], y[:n_init], y[n_init:]
-		# X_pre, X, y_pre, y, indices_pre, indices = sklearn.model_selection.train_test_split(X, y, indices, train_size=n_init, stratify=y,
-		#                                                               random_state=random_state, shuffle=True)
+
 		# Incremental TSNE for initializing training phase.
 		st = time.time()
 		inc_tsne.fit(X_pre, y_pre)
@@ -788,57 +778,87 @@ def main(args_raw):
 
 
 if __name__ == '__main__':
+
 	st = time.time()
-	print(st)
-	ARGS = config.parser(config_file='config.yaml')
-	data_name = ARGS['data_name']
-	n = ARGS['n']
-	n_iter = ARGS['n_iter']
-	update_iters = eval(ARGS['update_iters'])
-	perplexity = 30
-	n1 = int(np.round(n_iter * (1 / 4)))  # 250:750 = 1:3
-	# update_iters = (0,1)
-	update_str = f'({n1}, {n_iter - n1})|{update_iters}'
-	init_percents = [0.1, 0.3, 0.5, 0.7, 0.9, 0.995, 0.999]
-	random_states = [100, 200, 300, 400, 500]   # [100, 200] #
-	# show_init_params('out', data_name, perplexity, n, update_str=update_str,
-	#                  init_percents=init_percents, random_states = random_states,
-	#                  method='exact', update_init= 'weighted', is_show=True)
-	# show_avg_local_error('out', data_name, perplexity, n, update_str= update_str,
-	#                  init_percents= init_percents, random_states = random_states,
-	#                  method='exact', update_init= 'weighted', is_show=True)
-	# exit(0)
+	for n in [50, 300, 600]:
+		for update_iters in [(0, 0), (0, 1)]:  # (0, 1), (3, 7), (12, 38)
+			for n_iter in [100, 1000]:
+				# # data_name = '1gaussian'
+				# data_name = '2gaussians'
+				# # data_name = '2circles'
+				# # data_name = 's-curve'
+				# # data_name = '5gaussians-5dims'
+				data_name = '3gaussians-10dims'
+				perplexity = 30
+				# data_size = 300 # 3000,
+				# n = 600  # 2 clusters * n = 600 : 0.1* 600 = 60
+				# n_iter = 1000  # > 8 hours
+				n1 = int(np.round(n_iter * (1 / 4)))  # 250:750 = 1:3
+				# update_iters = (0,1)
+				update_str = f'({n1}, {n_iter - n1})|{update_iters}'
+				init_percents = [0.1, 0.3, 0.5, 0.7, 0.9, 0.995, 0.999]
+				random_states = [100, 200, 300, 400, 500]   # [100, 200] #
+				# show_init_params('out', data_name, perplexity, n, update_str=update_str,
+				#                  init_percents=init_percents, random_states = random_states,
+				#                  method='exact', update_init= 'weighted', is_show=True)
+				# show_avg_local_error('out', data_name, perplexity, n, update_str= update_str,
+				#                  init_percents= init_percents, random_states = random_states,
+				#                  method='exact', update_init= 'weighted', is_show=True)
+				# exit(0)
 
-	"""Case 1: 3gaussians-10dims
-		It includes 3 clusters, and each has 500 data points in R^10.
-	"""
-	args = {'data_name': data_name, 'n': n, 'n_iter': n_iter}
-	for update_init in ['weighted']:  # 'Gaussian', 'weighted'
-		for random_state in random_states:
-			args['random_state'] = random_state
-			args['method'] = "exact"  # 'exact', "barnes_hut"
-			args['perplexity'] = perplexity
-			args['update_init'] = update_init
-			args['update_iters'] = update_iters
-			args['init_percents'] = init_percents
-			sub_dir = '|'.join([args['method'], f'{perplexity}', args['update_init'], f'seed_{random_state}'])
-			args['out_dir'] = os.path.join('out', args['data_name'], str(args['n']), sub_dir)
-			# print(f'\n\nargs: {args}')
-			pprint(args, sort_dicts=False)
-			main(args)
-		try:
-			show_init_params(data_name=args['data_name'], perplexity=perplexity, data_size=n,
-			                 update_str=update_str, init_percents=args['init_percents'],
-			                 random_states=random_states,
-			                 method=args['method'], update_init=args['update_init'], is_show=True)
-			for random_state in random_states:
-				show_avg_local_error(data_name=args['data_name'], perplexity=perplexity, data_size=n,
-				                     update_str=update_str, init_percents=args['init_percents'],
-				                     random_state=random_state,
-				                     method=args['method'], update_init=args['update_init'], is_show=True)
-		except Exception as e:
-			print(e)
-			traceback.print_exc()
+				args_lst = []
+				# """Case 0: 1circles
+				# 	It includes 1 clusters, and each has 500 data points in R^2.
+				# """
+				args = {'data_name': '1gaussian', 'n': n, 'n_iter': n_iter}
+				# args_lst.append(args)
 
+				# """Case 0: 2gaussians
+				# 	It includes 2 clusters, and each has 500 data points in R^2.
+				# """
+				args = {'data_name': '2gaussians', 'n': n, 'n_iter': n_iter}
+				# args_lst.append(args)
+
+				# """Case 0: 2circles
+				# 	It includes 2 clusters, and each has 500 data points in R^2.
+				# """
+				args = {'data_name': '2circles', 'n': n, 'n_iter': n_iter}
+				# args_lst.append(args)
+				"""Case 1: 3gaussians-10dims
+					It includes 3 clusters, and each has 500 data points in R^10.
+				"""
+				args = {'data_name': '3gaussians-10dims', 'n': n, 'n_iter': n_iter}
+				args_lst.append(args)
+				"""Case 2: mnist
+					It includes 10 clusters, and each has 500 data points in R^784.
+				"""
+				args = {'data_name': 'mnist', 'n': n, 'n_iter': n_iter}
+				args_lst.append(args)
+				for args in args_lst:
+					for update_init in ['weighted']:  # 'Gaussian', 'weighted'
+						for random_state in random_states:
+							args['random_state'] = random_state
+							args['method'] = "exact"  # 'exact', "barnes_hut"
+							args['perplexity'] = perplexity
+							args['update_init'] = update_init
+							args['update_iters'] = update_iters
+							args['init_percents'] = init_percents
+							sub_dir = '|'.join([args['method'], f'{perplexity}', args['update_init'], f'seed_{random_state}'])
+							args['out_dir'] = os.path.join('out', args['data_name'], str(args['n']), sub_dir)
+							print(f'\n\nargs: {args}')
+							main(args)
+						try:
+							show_init_params(data_name=args['data_name'], perplexity=perplexity, data_size=n,
+							                 update_str=update_str, init_percents=args['init_percents'],
+							                 random_states=random_states,
+							                 method=args['method'], update_init=args['update_init'], is_show=True)
+							show_avg_local_error(data_name=args['data_name'], perplexity=perplexity, data_size=n,
+							                     update_str=update_str, init_percents=args['init_percents'],
+							                     random_states=random_states,
+							                     method=args['method'], update_init=args['update_init'], is_show=True)
+						except Exception as e:
+							print(e)
+							traceback.print_exc()
+					# exit(0)
 	ed = time.time()
 	print(f'\n\nTotal time: {ed - st}s.')

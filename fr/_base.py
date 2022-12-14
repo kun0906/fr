@@ -105,13 +105,13 @@ def trustworthiness(X, X_embedded, *, n_neighbors=5, metric="euclidean"):
 
 def evaluate(X, y=None, X_embedded=None):
 	res = {}
-
+	n, _ = X.shape
 	# Get trustworthiness
-	score = trustworthiness(X, X_embedded, n_neighbors=5, metric='euclidean')
+	score = trustworthiness(X, X_embedded, n_neighbors=min(5, n//2-1), metric='euclidean')
 	res['trustworthiness'] = score
 
 	# Get continuity.
-	score = trustworthiness(X_embedded, X, n_neighbors=5, metric='euclidean')
+	score = trustworthiness(X_embedded, X, n_neighbors=min(5, n//2-1), metric='euclidean')
 	res['continuity'] = score
 
 	# Get 1-nearest neighbor accuracy
@@ -142,10 +142,17 @@ def evaluate(X, y=None, X_embedded=None):
 	dist_X = pairwise_distances(X, X, metric="euclidean")
 	dist_Y = pairwise_distances(X_embedded, X_embedded, metric="euclidean")
 	ns = 0
+	ns2 = 0
+	ns3 = 0
 	for i in range(n):
 		for j in range(n):
 			ns += (dist_X[i][j] - dist_Y[i][j])**2
+			if i == j: continue
+			ns2 += (1 - dist_Y[i][j]/dist_X[i][j]) ** 2
 	res['normalized_stress'] = ns / np.sum(np.square(dist_X))
+	# http://cda.psych.uiuc.edu/psychometrika_highly_cited_articles/kruskal_1964a.pdf
+	res['normalized_stress3'] = np.sqrt(res['normalized_stress'])
+	res['normalized_stress2'] = ns2
 
 	# shepard diagram goodness
 	dist_X = pairwise_distances(X, X)
@@ -248,8 +255,8 @@ def _gradient_descent(
 	p = p0.copy().ravel()
 	update = np.zeros_like(p)
 	gains = np.ones_like(p)
-	error = np.finfo(float).max
-	best_error = np.finfo(float).max
+	error = min(1e+8, np.finfo(float).max)
+	best_error = min(1e+8, np.finfo(float).max)
 	best_iter = i = it
 	res = []  # store the values of each iteration
 

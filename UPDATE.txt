@@ -1,3 +1,10 @@
+V0.0.9: Add n_repeats and deploy all the codes onto HPC.
+
+1. Add config.py, sbatch.sh and main_all.py
+    Install Cython==0.29.32 and ruamel.yaml==0.17.21
+2. Add more subplots (e.g., time, perplexity, and kl) into the performance metrics
+
+3. Add n_repeats and more init_percents
 
 
 V0.0.8: Update the dataset and normalize the weights for computing Y.

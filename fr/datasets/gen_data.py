@@ -177,7 +177,7 @@ def gen_data(n=1000, is_show=False, data_type='s-curve1', with_noise=False, rand
 	# 	left=0.02, right=0.98, bottom=0.001, top=0.95, wspace=0.05, hspace=0.01
 	# )
 	plt.scatter(X[:, 0], X[:, 1], c=y)
-
+	plt.title(f'{data_type}: X{X.shape}\n{list(collections.Counter(y).items())}')
 	if is_show: plt.show()
 	plt.close()
 	# print('test')

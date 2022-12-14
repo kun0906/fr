@@ -1,0 +1,38 @@
+### Experimental configuration
+#
+#
+# Email: kun.bj@outlook.com
+
+#SEED: 42
+#VERBOSE: 2     # (almost) no info: 0, basic info: 1, debug level1: 2, debug level2: 3, debug level3: 4
+#IN_DIR: './datasets'
+#OUT_DIR: './out'
+#IS_SHOW: True
+#SHOW_TITLE: True
+#SEPERTOR: '|'
+#OVERWRITE: True
+
+#N_REPEATS: 5
+data_name: '3gaussians-10dims'
+n: 50
+n_iter: 100
+update_iters: (0, 0)
+
+
+#NORMALIZE_METHOD: NONE   # std (default), min-max, None
+#IS_PCA: False              # if True, NORMALIZE_METHOD cannot be "None"
+#IS_REMOVE_OUTLIERS: False   # if True, we will remove some noises before fitting the  model.
+#N_CLUSTERS: 2
+#
+#DATASET:    # data information
+#    name: '3GAUSSIANS'
+#    py_name: None
+#    detail: ''
+#
+#ALGORITHM:
+#    name:  None      #   not used yet
+#    py_name: 'kmeans'
+#
+#n_consecutive: 5
+#
+#MAX_ITERATION: 100
